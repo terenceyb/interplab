@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# 本地工具/环境目录（不应进入仓库）
+.codebuddy/
+.genie/
+.templates/
+.cloudstudio
+
+# 本地打包产物
+*.zip
