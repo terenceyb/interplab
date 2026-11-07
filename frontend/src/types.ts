@@ -50,7 +50,11 @@ export interface Material {
   id: string;
   title: string;
   createdAt: number;
-  audioKey: string; // IndexedDB 中的音频 blob key
+  audioKey: string; // IndexedDB 中的媒体 blob key（音频或视频）
+  /** 素材类型：默认 audio，视频素材为 video */
+  kind?: 'audio' | 'video';
+  /** 视频无法解析音轨时的标记（此时分段退化为等时长切分） */
+  noWaveform?: boolean;
   duration: number; // 秒
   sampleRate: number;
   peaks: number[]; // 归一化波形峰值

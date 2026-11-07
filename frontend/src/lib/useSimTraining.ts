@@ -11,7 +11,7 @@ import type { Attempt, Material, Session, TrainMode } from '@/types';
  * 保证 10 分钟连续训练的时间漂移可控（两轨共享时间基准 offset）。
  */
 export function useSimTraining(material: Material, url: string) {
-  const player = useSourcePlayer(url, material.trim.start, material.trim.end);
+  const player = useSourcePlayer(url, material.trim.start, material.trim.end, material.kind ?? 'audio');
   const [state, setState] = useState<'idle' | 'training' | 'paused' | 'done'>('idle');
   const [level, setLevel] = useState({ rms: 0, wave: [] as number[] });
   const [elapsed, setElapsed] = useState(0);

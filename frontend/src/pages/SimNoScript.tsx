@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader, Section } from '@/components/PageHeader';
 import { EvsBar } from '@/components/ScriptView';
 import { LevelMeter } from '@/components/NotePad';
 import { Waveform } from '@/components/Waveform';
+import { RateSelect } from '@/components/RateSelect';
+import { VideoStage } from '@/components/VideoStage';
+
 import { useApp } from '@/store/useApp';
 import { useAudioUrl, useHotkeys } from '@/lib/hooks';
 import { buildSession, useSimTraining } from '@/lib/useSimTraining';
@@ -117,6 +119,9 @@ function Runner({ material, saveSession, nav }: { material: Material; saveSessio
               <EvsBar sourceT={t.player.time} duration={effDur} target={evsTarget} />
             </div>
             {t.state === 'training' ? <LevelMeter wave={t.level.wave} level={t.level.rms} /> : null}
+            {material.kind === 'video' ? (
+              <VideoStage el={t.player.el} className="aspect-video max-h-[44vh] w-full" />
+            ) : null}
             <Waveform
               peaks={material.peaks}
               duration={material.duration}
@@ -156,18 +161,7 @@ function Runner({ material, saveSession, nav }: { material: Material; saveSessio
             </div>
             <div>
               <Label className="text-xs">源语变速</Label>
-              <Select value={String(t.player.rate)} onValueChange={(v) => t.player.setRate(Number(v))}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0.75, 0.9, 1, 1.1, 1.25].map((r) => (
-                    <SelectItem key={r} value={String(r)}>
-                      {r}×
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <RateSelect value={t.player.rate} onChange={t.player.setRate} compact />
             </div>
             <div className="flex items-center justify-between rounded-md border px-2">
               <div>

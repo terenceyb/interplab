@@ -10,6 +10,9 @@ import { PageHeader, Section } from '@/components/PageHeader';
 import { EvsBar } from '@/components/ScriptView';
 import { LevelMeter } from '@/components/NotePad';
 import { Waveform } from '@/components/Waveform';
+import { RateSelect } from '@/components/RateSelect';
+import { VideoStage } from '@/components/VideoStage';
+
 import { useApp } from '@/store/useApp';
 import { useAudioUrl, useHotkeys } from '@/lib/hooks';
 import { buildSession, useSimTraining } from '@/lib/useSimTraining';
@@ -170,22 +173,14 @@ function Runner({ material, saveSession, nav }: { material: Material; saveSessio
             </div>
             <div>
               <Label className="text-xs">源语变速</Label>
-              <Select value={String(t.player.rate)} onValueChange={(v) => t.player.setRate(Number(v))}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0.75, 0.9, 1, 1.1, 1.25].map((r) => (
-                    <SelectItem key={r} value={String(r)}>
-                      {r}×
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <RateSelect value={t.player.rate} onChange={t.player.setRate} compact />
             </div>
           </div>
         </Section>
 
+        {material.kind === 'video' ? (
+          <VideoStage el={t.player.el} className="aspect-video max-h-[44vh] w-full" />
+        ) : null}
         <Section title="源语波形">
           <Waveform
             peaks={material.peaks}

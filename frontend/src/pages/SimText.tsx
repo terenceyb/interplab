@@ -11,6 +11,9 @@ import { PageHeader, Section, Empty } from '@/components/PageHeader';
 import { ScriptView } from '@/components/ScriptView';
 import { LevelMeter } from '@/components/NotePad';
 import { Waveform } from '@/components/Waveform';
+import { RateSelect } from '@/components/RateSelect';
+import { VideoStage } from '@/components/VideoStage';
+
 import { useApp } from '@/store/useApp';
 import { useAudioUrl, useHotkeys } from '@/lib/hooks';
 import { buildSession, useSimTraining } from '@/lib/useSimTraining';
@@ -153,6 +156,9 @@ function Runner({
             />
           </Section>
 
+          {material.kind === 'video' ? (
+            <VideoStage el={t.player.el} className="aspect-video max-h-[44vh] w-full" />
+          ) : null}
           <Section title="源语进度">
             <Waveform
               peaks={material.peaks}
@@ -196,18 +202,7 @@ function Runner({
               </div>
               <div>
                 <Label className="text-xs">变速</Label>
-                <Select value={String(t.player.rate)} onValueChange={(v) => t.player.setRate(Number(v))}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[0.75, 1, 1.1, 1.25].map((r) => (
-                      <SelectItem key={r} value={String(r)}>
-                        {r}×
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <RateSelect value={t.player.rate} onChange={t.player.setRate} compact />
               </div>
             </div>
           </Section>

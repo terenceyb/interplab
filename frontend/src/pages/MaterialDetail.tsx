@@ -24,6 +24,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PageHeader, Section, Empty } from '@/components/PageHeader';
+import { RateSelect } from '@/components/RateSelect';
+import { VideoStage } from '@/components/VideoStage';
 import { Waveform } from '@/components/Waveform';
 import { useApp } from '@/store/useApp';
 import { useAudioUrl, useSourcePlayer, getVA } from '@/lib/hooks';
@@ -80,7 +82,7 @@ function Detail({
   const [m, setM] = useState<Material>(material);
   useEffect(() => setM(material), [material]);
   const effDur = Math.max(0, m.trim.end - m.trim.start);
-  const player = useSourcePlayer(url, m.trim.start, m.trim.end);
+  const player = useSourcePlayer(url, m.trim.start, m.trim.end, m.kind ?? 'audio');
   const [tagInput, setTagInput] = useState('');
   const [params, setParams] = useState<SegmentParams>(DEFAULT_PARAMS);
   const [segments, setSegments] = useState<Segment[] | null>(null);
@@ -220,21 +222,11 @@ function Detail({
                 <Button size="sm" variant="outline" onClick={() => (player.playing ? player.pause() : player.play(player.time))}>
                   {player.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 </Button>
-                <Select value={String(player.rate)} onValueChange={(v) => player.setRate(Number(v))}>
-                  <SelectTrigger className="h-8 w-[72px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[0.75, 1, 1.25, 1.5].map((r) => (
-                      <SelectItem key={r} value={String(r)}>
-                        {r}×
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <RateSelect value={player.rate} onChange={player.setRate} compact />
               </div>
             }
           >
+            {m.kind === 'video' ? <VideoStage el={player.el} className="mb-2 aspect-video w-full" /> : null}
             <div className="rounded-md bg-muted/40 p-2">
               <Waveform
                 peaks={m.peaks}

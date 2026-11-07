@@ -102,6 +102,8 @@ export type PlayMode = 'source' | 'user' | 'mix' | 'split';
 
 export interface DualPlayerOptions {
   srcUrl: string;
+  /** 源语媒体类型：video 时使用 <video> 元素承载（音频仍走同一播放内核） */
+  kind?: 'audio' | 'video';
   userUrl?: string;
   trimStart?: number;
   trimEnd?: number;
@@ -111,9 +113,26 @@ export interface DualPlayerOptions {
   onEnd?: () => void;
 }
 
+/** 按媒体类型创建承载元素：音频用 Audio，视频用 video（隐藏 DOM 时也能解码播放） */
+function makeMediaEl(kind: 'audio' | 'video', url: string): HTMLMediaElement {
+  const el = kind === 'video' ? document.createElement('video') : new Audio();
+  if (kind === 'video') {
+    const v = el as HTMLVideoElement;
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', '');
+    v.preload = 'auto';
+  }
+  el.src = url;
+  el.preload = 'auto';
+  el.preservesPitch = true;
+  return el;
+}
+
 export class DualPlayer {
-  src: HTMLAudioElement;
-  usr: HTMLAudioElement | null = null;
+  src: HTMLMediaElement;
+  usr: HTMLMediaElement | null = null;
+  private playing = false;
   mode: PlayMode = 'source';
   rate = 1;
   swapEars = false;
@@ -128,13 +147,13 @@ export class DualPlayer {
   private graphOk = false;
   private gainSrc: GainNode | null = null;
   private gainUsr: GainNode | null = null;
+  private srcNode: MediaElementAudioSourceNode | null = null;
+  private usrNode: MediaElementAudioSourceNode | null = null;
   private panSrc: StereoPannerNode | null = null;
   private panUsr: StereoPannerNode | null = null;
 
   constructor(opts: DualPlayerOptions) {
-    this.src = new Audio(opts.srcUrl);
-    this.src.preload = 'auto';
-    this.src.preservesPitch = true;
+    this.src = makeMediaEl(opts.kind ?? 'audio', opts.srcUrl);
     this.trimStart = opts.trimStart ?? 0;
     this.trimEnd = opts.trimEnd ?? Infinity;
     this.mapToUser = opts.mapToUser;
@@ -162,9 +181,10 @@ export class DualPlayer {
 
   setUserUrl(url: string) {
     this.usr?.pause();
-    this.usr = new Audio(url);
-    this.usr.preload = 'auto';
-    this.usr.preservesPitch = true;
+    // 换元素必须重建译语侧的源节点，否则新元素没有接入音频图（会完全无声）
+    this.usrNode?.disconnect();
+    this.usrNode = null;
+    this.usr = makeMediaEl('audio', url);
     this.usr.playbackRate = this.rate;
     this.usr.addEventListener('ended', () => this.handleEnd());
     this.buildGraph();
@@ -175,16 +195,16 @@ export class DualPlayer {
     if (this.graphOk || !this.usr) return;
     try {
       const ctx = audioCtx();
-      const srcNode = ctx.createMediaElementSource(this.src);
-      const usrNode = ctx.createMediaElementSource(this.usr);
+      if (!this.srcNode) this.srcNode = ctx.createMediaElementSource(this.src);
+      if (!this.usrNode) this.usrNode = ctx.createMediaElementSource(this.usr);
       const gS = ctx.createGain();
       const gU = ctx.createGain();
       const pS = ctx.createStereoPanner();
       const pU = ctx.createStereoPanner();
-      const merger = ctx.createChannelMerger(2);
-      srcNode.connect(gS).connect(pS).connect(merger, 0, 0);
-      usrNode.connect(gU).connect(pU).connect(merger, 0, 1);
-      merger.connect(ctx.destination);
+      // 两轨各自经 gain -> panner 直接进 destination：
+      // mix 时两轨都居中（真正叠加），split 时分别硬左/硬右。
+      this.srcNode.connect(gS).connect(pS).connect(ctx.destination);
+      this.usrNode.connect(gU).connect(pU).connect(ctx.destination);
       this.ctx = ctx;
       this.gainSrc = gS;
       this.gainUsr = gU;
@@ -201,10 +221,10 @@ export class DualPlayer {
     const hasUser = !!this.usr;
     if (!this.graphOk) {
       this.src.muted = this.mode === 'user';
-      this.src.volume = this.mode === 'mix' ? 0.5 : 1;
+      this.src.volume = this.mode === 'mix' ? 0.6 : 1;
       if (this.usr) {
         this.usr.muted = this.mode === 'source' || !hasUser;
-        this.usr.volume = this.mode === 'mix' ? 0.8 : 1;
+        this.usr.volume = this.mode === 'mix' ? 1 : 1;
       }
       return;
     }
@@ -252,9 +272,12 @@ export class DualPlayer {
   }
 
   setRate(r: number) {
-    this.rate = r;
-    this.src.playbackRate = r;
-    if (this.usr) this.usr.playbackRate = r;
+    this.rate = Math.min(2, Math.max(0.25, r));
+    for (const el of [this.src, this.usr]) {
+      if (!el) continue;
+      el.preservesPitch = true;
+      el.playbackRate = this.rate;
+    }
   }
 
   async play(from?: number, stopAt?: number | null) {
@@ -262,15 +285,18 @@ export class DualPlayer {
     if (this.ctx?.state === 'suspended') await this.ctx.resume();
     if (from !== undefined) this.seek(from);
     this.stopAt = stopAt ?? null;
-    if (this.mode !== 'user') {
-      await this.src.play();
-      if (this.mode !== 'source' && this.usr) this.syncUser(true);
+    this.playing = true;
+    if (this.mode !== 'user') await this.src.play();
+    // 关键修复：mix / split 也必须启动译语轨，否则只能听到源语
+    if (this.mode !== 'source' && this.usr) {
+      this.primeUser();
+      await this.usr.play().catch(() => undefined);
     }
-    if (this.mode === 'user' && this.usr) await this.usr.play();
     this.startTicking();
   }
 
   pause() {
+    this.playing = false;
     this.src.pause();
     this.usr?.pause();
     cancelAnimationFrame(this.raf);
@@ -288,13 +314,35 @@ export class DualPlayer {
     this.onTick?.(clamped);
   }
 
-  /** 将译语轨对齐到源语轨当前位置 */
+  /** 播放前把译语轨定位到与源语当前时刻对应的位置 */
+  private primeUser() {
+    if (!this.usr || !this.mapToUser) return;
+    const ut = this.mapToUser(this.time);
+    if (ut == null) return;
+    try {
+      this.usr.currentTime = Math.max(0, ut);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * 将译语轨对齐到源语轨当前位置。
+   * 源语时间落在录音区间之外（译语尚未开始 / 已结束）时暂停译语轨，
+   * 进入区间后再自动续播，避免两轨错位。
+   */
   private syncUser(force = false) {
     if (!this.usr || !this.mapToUser) return;
     if (this.mode === 'source') return;
     const ut = this.mapToUser(this.time);
-    if (ut == null) return;
-    if (force || Math.abs(this.usr.currentTime - ut) > 0.12) {
+    if (ut == null) {
+      if (!this.usr.paused) this.usr.pause();
+      return;
+    }
+    if (this.usr.paused && this.playing) {
+      void this.usr.play().catch(() => undefined);
+    }
+    if (force || Math.abs(this.usr.currentTime - ut) > 0.15) {
       try {
         this.usr.currentTime = Math.max(0, ut);
       } catch {
@@ -321,10 +369,9 @@ export class DualPlayer {
   }
 
   private handleEnd() {
-    if (this.mode === 'source' || this.mode === 'mix' || this.mode === 'split') {
-      cancelAnimationFrame(this.raf);
-      this.onEnd?.();
-    }
+    this.playing = false;
+    cancelAnimationFrame(this.raf);
+    this.onEnd?.();
   }
 
   destroy() {

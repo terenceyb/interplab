@@ -19,8 +19,14 @@ export function useAudioUrl(key?: string) {
 }
 
 /** 源语播放器（带首尾裁剪的虚拟时间轴） */
-export function useSourcePlayer(url: string, trimStart = 0, trimEnd = Infinity) {
+export function useSourcePlayer(
+  url: string,
+  trimStart = 0,
+  trimEnd = Infinity,
+  kind: 'audio' | 'video' = 'audio',
+) {
   const ref = useRef<DualPlayer | null>(null);
+  const [el, setEl] = useState<HTMLMediaElement | null>(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -30,19 +36,22 @@ export function useSourcePlayer(url: string, trimStart = 0, trimEnd = Infinity) 
     if (!url) return;
     const p = new DualPlayer({
       srcUrl: url,
+      kind,
       trimStart,
       trimEnd,
       onTick: (t) => setTime(t),
       onEnd: () => setPlaying(false),
     });
     ref.current = p;
+    setEl(p.src);
     const onMeta = () => setDuration(p.duration);
     p.src.addEventListener('loadedmetadata', onMeta);
     return () => {
       p.destroy();
       ref.current = null;
+      setEl(null);
     };
-  }, [url, trimStart, trimEnd]);
+  }, [url, trimStart, trimEnd, kind]);
 
   useEffect(() => {
     ref.current?.setRate(rate);
@@ -50,6 +59,7 @@ export function useSourcePlayer(url: string, trimStart = 0, trimEnd = Infinity) 
 
   return {
     player: ref,
+    el,
     time,
     duration,
     playing,

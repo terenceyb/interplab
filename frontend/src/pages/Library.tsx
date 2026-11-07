@@ -14,8 +14,30 @@ import { decodeFile, detectSilenceEdges, computePeaks } from '@/lib/audio';
 import { estimateRate } from '@/lib/vad';
 import type { Material } from '@/types';
 import { fmtSec } from '@/lib/metrics';
+import { CloudDownload } from 'lucide-react';
+import { CloudImportDialog } from '@/components/CloudImportDialog';
 
 const DIFF_LABEL: Record<string, string> = { easy: '入门', medium: '进阶', hard: '高难' };
+
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm|mkv|avi)$/i;
+const isVideoFile = (f: File) => f.type.startsWith('video/') || VIDEO_EXT.test(f.name);
+
+/** 读取视频时长（音轨不可解码时的兜底） */
+function probeVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.src = url;
+    const done = (d: number) => {
+      URL.revokeObjectURL(url);
+      resolve(d);
+    };
+    v.onloadedmetadata = () => done(Number.isFinite(v.duration) ? v.duration : 0);
+    v.onerror = () => done(0);
+    setTimeout(() => done(Number.isFinite(v.duration) ? v.duration : 0), 8000);
+  });
+}
 
 export default function Library() {
   const { materials, saveMaterial, removeMaterial, sessions } = useApp();
@@ -25,6 +47,7 @@ export default function Library() {
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [drag, setDrag] = useState(false);
+  const [cloudOpen, setCloudOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
 
@@ -42,28 +65,58 @@ export default function Library() {
   }, [materials, q, favOnly]);
 
   async function handleFiles(files: FileList | File[]) {
-    const arr = [...files].filter((f) => /audio|\/mp3|\/wav|\/m4a|\/mpeg|\/mp4|octet-stream/i.test(f.type) || /\.(mp3|wav|m4a|aac|ogg|flac|mp4|webm)$/i.test(f.name));
+    const arr = [...files].filter(
+      (f) =>
+        /^(audio|video)\//.test(f.type) ||
+        /\.(mp3|wav|m4a|aac|ogg|flac|mp4|mov|m4v|webm|mkv)$/i.test(f.name),
+    );
     if (!arr.length) return;
+    await ingest(arr);
+  }
+
+  /** 统一导入：音频解码波形，视频额外挂 video 元素承载画面 */
+  async function ingest(arr: File[], sourceLabel?: string) {
     setUploading(true);
     setProgress(0);
+    let ok = 0;
     for (let i = 0; i < arr.length; i++) {
       const f = arr[i];
-      setStatus(`正在解码 ${f.name}…`);
+      const video = isVideoFile(f);
+      setStatus(`正在处理 ${f.name}…`);
       setProgress(Math.round((i / arr.length) * 100));
       try {
-        const decoded = await decodeFile(f);
-        const edges = detectSilenceEdges(decoded.buffer);
-        const peaks = computePeaks(decoded.buffer);
         const key = await db.putAudio(f);
+        let duration = 0;
+        let sampleRate = 48000;
+        let peaks: number[] = [];
+        let trim = { start: 0, end: 0 };
+        let noWaveform = false;
+        try {
+          const decoded = await decodeFile(f);
+          const edges = detectSilenceEdges(decoded.buffer);
+          duration = decoded.duration;
+          sampleRate = decoded.sampleRate;
+          peaks = computePeaks(decoded.buffer);
+          trim = { start: edges.start, end: edges.end };
+        } catch {
+          if (!video) throw new Error('decode-failed');
+          // 视频音轨无法解码：用视频时长兜底，波形留空（分段退化为等时长）
+          duration = await probeVideoDuration(f);
+          noWaveform = true;
+          trim = { start: 0, end: duration };
+          if (!duration) throw new Error('no-duration');
+        }
         const m: Material = {
           id: db.uid(),
           title: f.name.replace(/\.[^.]+$/, ''),
           createdAt: Date.now(),
           audioKey: key,
-          duration: decoded.duration,
-          sampleRate: decoded.sampleRate,
+          kind: video ? 'video' : 'audio',
+          noWaveform,
+          duration,
+          sampleRate,
           peaks,
-          trim: { start: edges.start, end: edges.end },
+          trim,
           tags: [],
           difficulty: 'medium',
           accent: '',
@@ -72,22 +125,32 @@ export default function Library() {
           sentences: [],
         };
         await db.putMaterial(m);
+        ok += 1;
       } catch (e) {
         console.error(e);
-        setStatus(`${f.name} 解码失败，请确认是有效的音频文件`);
+        setStatus(
+          isVideoFile(f)
+            ? `${f.name} 无法解析，建议转成 MP4(H.264/AAC) 或 WebM 后重试`
+            : `${f.name} 解码失败，请确认是有效的音频文件`,
+        );
       }
     }
     setProgress(100);
-    setStatus('完成');
+    setStatus(ok ? `已导入 ${ok} 个${sourceLabel ? `（${sourceLabel}）` : ''}` : '未导入任何文件');
     await useApp.getState().refreshMaterials();
     setTimeout(() => {
       setUploading(false);
       setStatus('');
-    }, 600);
+    }, 900);
   }
 
   return (
     <>
+      <CloudImportDialog
+        open={cloudOpen}
+        onOpenChange={setCloudOpen}
+        onFiles={(files, label) => ingest(files, label)}
+      />
       <PageHeader
         title="个人素材库"
         desc="上传训练用源语音频。所有素材默认仅本人可见，保存在本机浏览器，不上传云端。"
@@ -96,13 +159,16 @@ export default function Library() {
             <Button variant="outline" size="sm" onClick={() => setFavOnly((v) => !v)}>
               <Star className={`mr-1 h-3.5 w-3.5 ${favOnly ? 'fill-current text-amber-500' : ''}`} /> 收藏
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setCloudOpen(true)}>
+              <CloudDownload className="mr-1 h-3.5 w-3.5" /> 网盘导入
+            </Button>
             <Button size="sm" onClick={() => fileRef.current?.click()}>
-              <Upload className="mr-1 h-3.5 w-3.5" /> 上传音频
+              <Upload className="mr-1 h-3.5 w-3.5" /> 上传音频 / 视频
             </Button>
             <input
               ref={fileRef}
               type="file"
-              accept="audio/*,.mp3,.wav,.m4a,.mp4,.ogg,.flac,.webm"
+              accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.mp4,.mov,.m4v,.webm,.mkv"
               multiple
               className="hidden"
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
@@ -127,8 +193,8 @@ export default function Library() {
         }}
       >
         <AudioLines className="mx-auto h-6 w-6 text-muted-foreground" />
-        <p className="mt-2 text-sm text-muted-foreground">把音频拖到这里，或点击右上角「上传音频」</p>
-        <p className="mt-1 text-xs text-muted-foreground">支持 MP3 / WAV / M4A 等常见格式，建议单文件 60 分钟以内</p>
+        <p className="mt-2 text-sm text-muted-foreground">把音频或视频拖到这里，或点击右上角「上传音频 / 视频」</p>
+        <p className="mt-1 text-xs text-muted-foreground">音频 MP3 / WAV / M4A，视频 MP4 / MOV / WebM；建议单文件 60 分钟以内</p>
       </div>
 
       <div className="mx-6 mt-4 flex items-center gap-2">
@@ -158,6 +224,14 @@ export default function Library() {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span>{fmtSec(Math.max(0, m.trim.end - m.trim.start))}</span>
                     <span>·</span>
+                    {m.kind === 'video' ? (
+                      <>
+                        <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                          视频
+                        </Badge>
+                        <span>·</span>
+                      </>
+                    ) : null}
                     <span>{DIFF_LABEL[m.difficulty]}</span>
                     {m.wpm ? (
                       <>

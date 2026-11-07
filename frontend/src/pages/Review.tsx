@@ -22,6 +22,8 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader, Section, Empty } from '@/components/PageHeader';
 import { DualTrack } from '@/components/Waveform';
+import { RateSelect } from '@/components/RateSelect';
+import { VideoStage } from '@/components/VideoStage';
 import { NotePad } from '@/components/NotePad';
 import { useApp, audioUrl } from '@/store/useApp';
 import { toast } from 'sonner';
@@ -204,6 +206,15 @@ function Detail({
   const [compareId, setCompareId] = useState('');
   const [metrics, setMetrics] = useState(session.metrics);
   const playerRef = useRef<DualPlayer | null>(null);
+  const [mediaEl, setMediaEl] = useState<HTMLMediaElement | null>(null);
+  // 播放器实例可能晚于控件创建（依赖音频 URL 异步加载），
+  // 用 ref 保存最新配置，创建时立刻套用，否则 UI 显示「混合」而实际仍在「源语」
+  const modeRef = useRef(playMode);
+  modeRef.current = playMode;
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  const swapRef = useRef(swap);
+  swapRef.current = swap;
   const [srcUrl, setSrcUrl] = useState('');
   const [att, setAtt] = useState<Attempt | null>(session.attempts[0] || null);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -240,6 +251,7 @@ function Detail({
     };
     const p = new DualPlayer({
       srcUrl,
+      kind: material?.kind === 'video' ? 'video' : 'audio',
       userUrl: userUrl || undefined,
       trimStart: material?.trim.start ?? 0,
       trimEnd: material?.trim.end ?? Infinity,
@@ -247,10 +259,15 @@ function Detail({
       onTick: (t) => setTime(t),
       onEnd: () => setPlaying(false),
     });
+    p.setMode(modeRef.current);
+    p.setRate(rateRef.current);
+    p.setSwap(swapRef.current);
     playerRef.current = p;
+    setMediaEl(p.src);
     return () => {
       p.destroy();
       playerRef.current = null;
+      setMediaEl(null);
     };
   }, [srcUrl, userUrl, att, isConsecutive, material?.trim.start, material?.trim.end]);
 
@@ -416,6 +433,9 @@ function Detail({
               </div>
             }
           >
+            {material.kind === 'video' ? (
+              <VideoStage el={mediaEl} className="mb-3 aspect-video w-full" />
+            ) : null}
             {att ? (
               <DualTrack
                 srcPeaks={material.peaks}
@@ -463,18 +483,7 @@ function Detail({
               <Button size="sm" variant="outline" onClick={() => playerRef.current?.seek(time + 5)}>
                 +5s
               </Button>
-              <Select value={String(rate)} onValueChange={(v) => setRate(Number(v))}>
-                <SelectTrigger className="h-8 w-[76px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0.75, 1, 1.25, 1.5].map((r) => (
-                    <SelectItem key={r} value={String(r)}>
-                      {r}×
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <RateSelect value={rate} onChange={setRate} compact />
               <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                 播放头 {fmtSec(time)} · 段落 {isConsecutive ? `#${(seg?.index ?? 0) + 1}` : '整段'}
               </span>
