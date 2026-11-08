@@ -53,10 +53,26 @@ git push -u origin main
 ```
 
 3. 打开仓库 **Settings → Pages**，把 **Source** 设为 **GitHub Actions**；
-4. 等 Actions 里的 `Deploy InterpLab to GitHub Pages` 跑完，访问
-   `https://<你的用户名>.github.io/<仓库名>/`。
+4. 等 Actions 里的 `Deploy InterpLab to GitHub Pages` 跑完即可访问。
 
 `vite.config.ts` 里 `base: './'` 使用相对路径，因此无需按仓库名额外配置子路径。
+
+### 当前线上地址与自定义域名
+
+本仓库当前部署在用户站点 `terenceyb.github.io` 的自定义域名之下，属于 **project site（子路径）**：
+
+| 用途 | 地址 |
+|---|---|
+| 正式地址 | https://blog.evanhub.cn/interplab/ |
+| 旧地址 | `https://terenceyb.github.io/interplab/`（301 跳转到正式地址） |
+
+**自定义域名绑在用户站点仓库 `terenceyb.github.io` 上，不在本仓库。**
+因此本仓库**不应**添加 `CNAME` 文件——一旦加了，GitHub Pages 会把本仓库当成根站点，
+抢走 `blog.evanhub.cn/` 根路径，导致同一域名下的博客站被覆盖。
+
+原 `github.io` 地址返回 301 是 GitHub Pages 的强制行为：只要归属的用户站点绑定了自定义域名，
+该域下所有 project site 都会跳转到自定义域名的对应子路径，无法单独关闭。换域名或回退该行为时，
+需在 `terenceyb.github.io` 仓库的 Settings → Pages 中调整。
 
 ## 技术说明
 
