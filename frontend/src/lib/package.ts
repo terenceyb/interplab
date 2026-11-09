@@ -169,8 +169,18 @@ export async function importPackage(
   file: File,
   onProgress?: Progress,
 ): Promise<ImportResult> {
-  const { default: JSZip } = await import('jszip');
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  if (/\.json$/i.test(file.name)) {
+    throw new Error(
+      '这是「记录导出」生成的 JSON 归档，只有文字记录、不含音视频，无法直接恢复训练。请改用数据包（.ipkg / .zip）。',
+    );
+  }
+  let zip: any;
+  try {
+    const { default: JSZip } = await import('jszip');
+    zip = await JSZip.loadAsync(await file.arrayBuffer());
+  } catch {
+    throw new Error('文件不是有效的压缩包，无法作为数据包导入');
+  }
   const manifestFile = zip.file('interplab.json') || zip.file(/interplab.*\.json$/)[0];
   if (!manifestFile) {
     throw new Error('不是有效的 InterpLab 数据包（缺少 interplab.json）');
