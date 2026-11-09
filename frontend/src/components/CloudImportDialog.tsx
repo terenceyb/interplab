@@ -1,13 +1,5 @@
 import { useRef, useState } from 'react';
-import {
-  CloudDownload,
-  FolderOpen,
-  Link2,
-  ShieldAlert,
-  Loader2,
-  CheckCircle2,
-  ExternalLink,
-} from 'lucide-react';
+import { CloudDownload, FolderOpen, Link2, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,12 +13,12 @@ interface Props {
 }
 
 /**
- * 网盘 / 外部素材导入。
+ * 外部素材导入：直链下载 + 本地文件夹批量。
  *
- * 说明（重要）：本平台是纯前端静态站点，没有后端。百度网盘、阿里云盘的「账号挂载」
- * 需要 OAuth 授权码换 token，而换 token 必须携带 app_secret —— 一旦放进浏览器端代码
- * 就等于公开泄露，且两个平台的文件下载接口都不返回允许跨域的响应头。
- * 因此「保存到网盘后自动拉取」必须有一个后端代理，本页给出可用的替代路径。
+ * 网盘（百度 / 阿里云盘）账号挂载已移除：两个平台的开放接口都需要
+ * 「OAuth 授权码 → 换 access_token」，换 token 必须携带 app_secret 并做服务端签名，
+ * 纯前端站点无法安全保存密钥；且其文件下载接口不返回 CORS 头，浏览器拿不到文件。
+ * 与其保留一个点了必然失败的入口，不如去掉，改用下面两条真实可用的路径。
  */
 export function CloudImportDialog({ open, onOpenChange, onFiles }: Props) {
   const [url, setUrl] = useState('');
@@ -62,7 +54,7 @@ export function CloudImportDialog({ open, onOpenChange, onFiles }: Props) {
       setMsg({
         ok: false,
         text: /Failed to fetch|NetworkError|Load failed/i.test(text)
-          ? '下载被目标站点的跨域策略（CORS）阻止。请先把文件下载到本地，再用「本地文件夹」或直接拖入素材库。'
+          ? '下载被目标站点的跨域策略（CORS）阻止。请先把文件下载到本地，再用「本地文件夹」导入或直接拖入素材库。'
           : `导入失败：${text}`,
       });
     } finally {
@@ -75,19 +67,18 @@ export function CloudImportDialog({ open, onOpenChange, onFiles }: Props) {
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CloudDownload className="h-4 w-4" /> 从网盘 / 外部导入素材
+            <CloudDownload className="h-4 w-4" /> 导入外部素材
           </DialogTitle>
           <DialogDescription>
-            支持直链下载与本地文件夹批量导入；百度网盘、阿里云盘的账号挂载受平台接口限制，见下方说明。
+            支持直链下载与本地文件夹批量导入，文件只保存在你本机浏览器里。
           </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="url">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="url">
               <Link2 className="mr-1.5 h-3.5 w-3.5" /> 直链导入
             </TabsTrigger>
-            <TabsTrigger value="pan">百度 / 阿里云盘</TabsTrigger>
             <TabsTrigger value="folder">
               <FolderOpen className="mr-1.5 h-3.5 w-3.5" /> 本地文件夹
             </TabsTrigger>
@@ -128,47 +119,6 @@ export function CloudImportDialog({ open, onOpenChange, onFiles }: Props) {
             </p>
           </TabsContent>
 
-          <TabsContent value="pan" className="space-y-3 pt-3">
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed">
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-              <div>
-                <b>账号挂载当前不可用，原因不是没做，而是架构限制。</b>
-                <br />
-                百度网盘 / 阿里云盘的开放接口都需要「OAuth 授权码 → 换取 access_token」，换 token 必须携带
-                <code className="mx-1 rounded bg-muted px-1">app_secret</code>
-                并做服务端签名。本平台是纯前端站点（数据都存在你本机浏览器，没有服务器），
-                把 secret 写进前端代码等于公开泄露；且两家文件下载接口都不返回允许跨域的响应头。
-                结论：<b>要真正挂载账号，必须先部署一个后端代理服务</b>。
-              </div>
-            </div>
-
-            <div className="space-y-2 rounded-md border p-3 text-xs">
-              <div className="font-medium">现在就能用的替代路径（二选一）</div>
-              <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
-                <li>
-                  在网盘里把文件「下载到本地」→ 用左侧「本地文件夹」或直接拖进素材库（推荐，最稳）
-                </li>
-                <li>
-                  如果文件能生成<strong>直链</strong>（部分网盘会员支持），用「直链导入」粘贴地址
-                </li>
-              </ol>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => window.open('https://pan.baidu.com', '_blank')}>
-                <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> 打开百度网盘
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.open('https://www.alipan.com', '_blank')}>
-                <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> 打开阿里云盘
-              </Button>
-            </div>
-
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              若你有服务器，我可以补一个仅做「OAuth 换 token + 文件流转发」的最小代理（约 100 行），
-              届时这里会变成真正的账号挂载入口。需要的话告诉我部署环境。
-            </p>
-          </TabsContent>
-
           <TabsContent value="folder" className="space-y-3 pt-3">
             <Label className="text-xs text-muted-foreground">
               选择一个文件夹，批量导入其中的音频 / 视频（含子目录），文件名会作为素材标题
@@ -196,6 +146,9 @@ export function CloudImportDialog({ open, onOpenChange, onFiles }: Props) {
             <Button variant="outline" onClick={() => dirRef.current?.click()}>
               <FolderOpen className="mr-1.5 h-3.5 w-3.5" /> 选择文件夹
             </Button>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              网盘文件请先下载到本地文件夹，再用这里批量导入——直连网盘账号的挂载需要服务端保存密钥，纯前端站点无法安全实现。
+            </p>
           </TabsContent>
         </Tabs>
       </DialogContent>

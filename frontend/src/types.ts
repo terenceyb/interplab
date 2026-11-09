@@ -45,6 +45,20 @@ export const MARKER_TYPES: MarkerTypeDef[] = [
 
 export const MARKER_MAP = Object.fromEntries(MARKER_TYPES.map((m) => [m.key, m])) as Record<string, MarkerTypeDef>;
 
+/** 一页幻灯片（从 .pptx 解析） */
+export interface SlideData {
+  index: number;
+  title?: string;
+  bullets: string[];
+  notes?: string;
+  /** 页内图片（dataURL），可能为空 */
+  images: string[];
+}
+
+/** 源语语言 */
+export type MaterialLanguage =
+  | 'zh' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'ru' | 'es' | 'ar' | 'other';
+
 /** 素材 */
 export interface Material {
   id: string;
@@ -67,8 +81,16 @@ export interface Material {
   /** A-04 难度标注：估算语速与信息密度 */
   wpm?: number;
   density?: 1 | 2 | 3;
+  /** 源语语言；未设置表示未标注 */
+  language?: MaterialLanguage;
   /** 稿件 / 字幕文本（原始） */
   script?: string;
+  /** 稿件形态：纯文本 或 PPT 幻灯片 */
+  docKind?: 'text' | 'slides';
+  /** PPT 幻灯片数据（docKind==='slides' 时存在） */
+  slides?: SlideData[];
+  /** 导入稿件时识别到的编码（用于排查乱码） */
+  scriptEncoding?: string;
   /** 句子与音频时间的对齐锚点 */
   sentences: Sentence[];
   replayAt?: number; // 计划重练日期（时间戳）
@@ -172,6 +194,8 @@ export interface MetricsResult {
 export interface SessionParams {
   rate?: number;
   hideText?: boolean;
+  /** 带稿同传：稿件是否跟随播放高亮 */
+  follow?: boolean;
   maskMode?: 'none' | 'tail' | 'random';
   maskRatio?: number;
   evsTarget?: number;

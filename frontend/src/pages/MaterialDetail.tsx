@@ -31,6 +31,9 @@ import { useApp } from '@/store/useApp';
 import { useAudioUrl, useSourcePlayer, getVA } from '@/lib/hooks';
 import { clipActivity, mergeAt, smartSegment, splitSegment, estimateRate } from '@/lib/vad';
 import { alignScript, calibrateSentence, extractCandidates, hasTimecodes } from '@/lib/text';
+import { parseScriptFile, SCRIPT_ACCEPT, legacyHint } from '@/lib/document';
+import { LANGUAGES } from '@/lib/languages';
+import type { SlideData } from '@/types';
 import { fmtSec } from '@/lib/metrics';
 import * as db from '@/lib/db';
 import type { Material, Segment, SegmentParams } from '@/types';
@@ -93,6 +96,9 @@ function Detail({
   const [libId, setLibId] = useState(libs[0]?.id || '');
   const [calibIndex, setCalibIndex] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [docBusy, setDocBusy] = useState(false);
+  const [docMsg, setDocMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [slides, setSlides] = useState<SlideData[] | undefined>(m.slides);
 
   const update = async (patch: Partial<Material>) => {
     const next = { ...m, ...patch };
@@ -142,7 +148,14 @@ function Detail({
     const rate = estimateRate(sents.map((s) => s.text).join(' '), effDur);
     const avgLen = sents.length ? sents.reduce((s, x) => s + x.text.length, 0) / sents.length : 0;
     const density: 1 | 2 | 3 = avgLen > 45 ? 3 : avgLen > 22 ? 2 : 1;
-    await update({ script: text, sentences: sents, wpm: rate.wpm, density });
+    await update({
+      script: text,
+      sentences: sents,
+      wpm: rate.wpm,
+      density,
+      docKind: slides?.length ? 'slides' : 'text',
+      slides: slides?.length ? slides : undefined,
+    });
   };
 
   const doCalibrate = async (i: number) => {
@@ -506,6 +519,26 @@ function Detail({
                   />
                 </div>
               </div>
+              <div>
+                <Label className="text-xs">源语语言</Label>
+                <Select
+                  value={m.language || 'none'}
+                  onValueChange={(v) => update({ language: v === 'none' ? undefined : (v as any) })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue placeholder="选择源语" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">未标注</SelectItem>
+                    {LANGUAGES.map((l) => (
+                      <SelectItem key={l.code} value={l.code}>
+                        {l.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-[11px] text-muted-foreground">素材库会按语言自动分组</p>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">难度</Label>
@@ -563,27 +596,86 @@ function Detail({
 
           <Section
             title="文本稿件 / 字幕"
-            desc="带稿同传需要；含时间码的 SRT/VTT 可直接高置信对齐，纯文本按语音分布粗对齐后可手动校准。"
+            desc="支持 TXT / MD / SRT / VTT / Word(.docx) / PPT(.pptx)；文本自动识别编码，PPT 以幻灯片形式手动翻页。"
             actions={
               <>
-                <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}>
-                  <Upload className="mr-1 h-3.5 w-3.5" /> 导入文件
+                <Button size="sm" variant="ghost" disabled={docBusy} onClick={() => fileRef.current?.click()}>
+                  <Upload className={`mr-1 h-3.5 w-3.5 ${docBusy ? 'animate-pulse' : ''}`} />
+                  {docBusy ? '解析中…' : '导入文件'}
                 </Button>
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".txt,.srt,.vtt,.md"
+                  accept={SCRIPT_ACCEPT}
                   className="hidden"
                   onChange={async (e) => {
                     const f = e.target.files?.[0];
+                    e.target.value = '';
                     if (!f) return;
-                    const t = await f.text();
-                    setScriptDraft(t);
+                    const hint = legacyHint(f.name);
+                    if (hint) {
+                      setDocMsg({ ok: false, text: hint });
+                      return;
+                    }
+                    setDocBusy(true);
+                    setDocMsg(null);
+                    try {
+                      const doc = await parseScriptFile(f);
+                      setScriptDraft(doc.text);
+                      if (doc.kind === 'slides' && doc.slides?.length) {
+                        setSlides(doc.slides);
+                        setDocMsg({
+                          ok: true,
+                          text: `已解析 ${doc.slides.length} 页幻灯片（${f.name}）。带稿同传中将以幻灯片形式手动翻页。`,
+                        });
+                      } else {
+                        setSlides(undefined);
+                        setDocMsg({
+                          ok: true,
+                          text: `已读取 ${f.name}（编码：${doc.encoding || '未知'}）${hasTimecodes(doc.text) ? ' · 含时间码，可跟随音视频' : ''}`,
+                        });
+                      }
+                    } catch (err: any) {
+                      setDocMsg({ ok: false, text: String(err?.message || err) });
+                    } finally {
+                      setDocBusy(false);
+                    }
                   }}
                 />
               </>
             }
           >
+            {docMsg ? (
+              <div
+                className={`mb-2 flex items-start gap-2 rounded-md border p-2 text-xs ${
+                  docMsg.ok ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-amber-500/30 bg-amber-500/10'
+                }`}
+              >
+                <span className="flex-1">{docMsg.text}</span>
+                <button className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setDocMsg(null)}>
+                  ×
+                </button>
+              </div>
+            ) : null}
+            {slides?.length ? (
+              <div className="mb-2 flex items-center gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 p-2 text-xs">
+                <span className="flex-1">
+                  已载入 <b>{slides.length}</b> 页幻灯片：{[slides[0]?.title, slides[1]?.title].filter(Boolean).join(' / ') || '（无标题）'}
+                  {slides.length > 2 ? ' …' : ''}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs"
+                  onClick={() => {
+                    setSlides(undefined);
+                    void update({ slides: undefined, docKind: 'text' });
+                  }}
+                >
+                  移除幻灯片
+                </Button>
+              </div>
+            ) : null}
             <Textarea
               className="min-h-[120px] text-xs"
               placeholder="粘贴讲话稿或字幕内容…（含 00:00:01,000 --> 00:00:04,000 时间码时自动按时间码对齐）"

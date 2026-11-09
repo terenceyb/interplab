@@ -12,6 +12,9 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  Volume2,
+  Loader2,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +23,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { PageHeader, Section, Empty } from '@/components/PageHeader';
 import { DualTrack } from '@/components/Waveform';
 import { RateSelect } from '@/components/RateSelect';
@@ -32,6 +43,7 @@ import { useHotkeys } from '@/lib/hooks';
 import { computeMetrics, fmtSec } from '@/lib/metrics';
 import { download, reportText, exportPng } from '@/lib/export';
 import { findSentenceIndex } from '@/lib/text';
+import { buildMp3, defaultAudioName, ensureMp3Ext } from '@/lib/audioExport';
 import * as db from '@/lib/db';
 import { CATEGORY_LABEL, MARKER_MAP, MARKER_TYPES, MODE_LABEL } from '@/types';
 import type { Attempt, Marker, Session } from '@/types';
@@ -206,6 +218,11 @@ function Detail({
   const [compareId, setCompareId] = useState('');
   const [metrics, setMetrics] = useState(session.metrics);
   const playerRef = useRef<DualPlayer | null>(null);
+  /* 译语音频导出 */
+  const [audioOpen, setAudioOpen] = useState(false);
+  const [audioName, setAudioName] = useState('');
+  const [audioBusy, setAudioBusy] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
   const [mediaEl, setMediaEl] = useState<HTMLMediaElement | null>(null);
   // 播放器实例可能晚于控件创建（依赖音频 URL 异步加载），
   // 用 ref 保存最新配置，创建时立刻套用，否则 UI 显示「混合」而实际仍在「源语」
@@ -391,6 +408,18 @@ function Detail({
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              disabled={!session.attempts.length}
+              onClick={() => {
+                setAudioName(defaultAudioName(session.materialTitle, session.createdAt));
+                setAudioProgress(0);
+                setAudioOpen(true);
+              }}
+            >
+              <Volume2 className="mr-1 h-3.5 w-3.5" /> 导出译语音频
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               className="text-destructive"
               onClick={() => {
@@ -405,6 +434,82 @@ function Detail({
           </>
         }
       />
+
+      <Dialog open={audioOpen} onOpenChange={(v) => !audioBusy && setAudioOpen(v)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Volume2 className="h-4 w-4" /> 导出译语音频
+            </DialogTitle>
+            <DialogDescription>
+              将本次训练的 {session.attempts.length} 段译语录音合成为一个 MP3（段间插入 0.4 秒静音便于区分），
+              文件名可自定义。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">文件名</Label>
+              <Input
+                value={audioName}
+                onChange={(e) => setAudioName(e.target.value)}
+                onFocus={(e) => {
+                  // 选中年份之前的部分，方便直接改写
+                  const i = e.target.value.indexOf('练习-');
+                  e.target.setSelectionRange(0, i > 0 ? i : e.target.value.length);
+                }}
+                disabled={audioBusy}
+                className="mt-1"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                默认格式：日期-时间练习-素材名.mp3，会自动补全 .mp3 后缀
+              </p>
+            </div>
+            {audioBusy ? (
+              <div className="space-y-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${Math.round(audioProgress * 100)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {audioProgress < 0.5 ? '正在解码录音…' : audioProgress < 0.9 ? '正在编码 MP3…' : '即将完成…'}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={audioBusy} onClick={() => setAudioOpen(false)}>
+              取消
+            </Button>
+            <Button
+              disabled={audioBusy || !audioName.trim()}
+              onClick={async () => {
+                setAudioBusy(true);
+                setAudioProgress(0);
+                try {
+                  const keyOf = (a: Attempt) => a.audioKey;
+                  const res = await buildMp3(
+                    session.attempts.map((a) => ({ audioKey: keyOf(a) })),
+                    { onProgress: setAudioProgress },
+                  );
+                  const name = ensureMp3Ext(audioName);
+                  download(name, res.blob, 'audio/mpeg');
+                  toast.success(`已导出 ${name}（${fmtSec(res.duration)}，${(res.blob.size / 1024 / 1024).toFixed(2)} MB）`);
+                  setAudioOpen(false);
+                } catch (e: any) {
+                  toast.error(`导出失败：${String(e?.message || e)}`);
+                } finally {
+                  setAudioBusy(false);
+                }
+              }}
+            >
+              {audioBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+              生成并下载
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 p-6 lg:grid-cols-4">
         <div className="no-print space-y-4 lg:col-span-3">

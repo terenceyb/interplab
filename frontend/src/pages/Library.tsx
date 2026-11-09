@@ -16,6 +16,8 @@ import type { Material } from '@/types';
 import { fmtSec } from '@/lib/metrics';
 import { CloudDownload } from 'lucide-react';
 import { CloudImportDialog } from '@/components/CloudImportDialog';
+import { LANGUAGES, langLabel, langShort } from '@/lib/languages';
+import type { MaterialLanguage } from '@/types';
 
 const DIFF_LABEL: Record<string, string> = { easy: '入门', medium: '进阶', hard: '高难' };
 
@@ -48,6 +50,7 @@ export default function Library() {
   const [status, setStatus] = useState('');
   const [drag, setDrag] = useState(false);
   const [cloudOpen, setCloudOpen] = useState(false);
+  const [langFilter, setLangFilter] = useState<'all' | MaterialLanguage | 'none'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
 
@@ -55,6 +58,10 @@ export default function Library() {
     const kw = q.trim().toLowerCase();
     return materials.filter((m) => {
       if (favOnly && !m.favorite) return false;
+      if (langFilter !== 'all') {
+        const key = m.language ?? 'none';
+        if (key !== langFilter) return false;
+      }
       if (!kw) return true;
       return (
         m.title.toLowerCase().includes(kw) ||
@@ -62,7 +69,29 @@ export default function Library() {
         m.accent.toLowerCase().includes(kw)
       );
     });
-  }, [materials, q, favOnly]);
+  }, [materials, q, favOnly, langFilter]);
+
+  /** 按源语语言分组：按预设语言顺序，未标注排最后 */
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof list>();
+    for (const m of list) {
+      const k = m.language ?? 'none';
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(m);
+    }
+    const order: string[] = [...LANGUAGES.map((l) => l.code), 'none'];
+    return order.filter((k) => map.has(k)).map((k) => ({ key: k, items: map.get(k)! }));
+  }, [list]);
+
+  /** 各语言素材数量，用于筛选条 */
+  const langCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const m of materials) {
+      const k = m.language ?? 'none';
+      c[k] = (c[k] || 0) + 1;
+    }
+    return c;
+  }, [materials]);
 
   async function handleFiles(files: FileList | File[]) {
     const arr = [...files].filter(
@@ -160,7 +189,7 @@ export default function Library() {
               <Star className={`mr-1 h-3.5 w-3.5 ${favOnly ? 'fill-current text-amber-500' : ''}`} /> 收藏
             </Button>
             <Button size="sm" variant="outline" onClick={() => setCloudOpen(true)}>
-              <CloudDownload className="mr-1 h-3.5 w-3.5" /> 网盘导入
+              <CloudDownload className="mr-1 h-3.5 w-3.5" /> 外部导入
             </Button>
             <Button size="sm" onClick={() => fileRef.current?.click()}>
               <Upload className="mr-1 h-3.5 w-3.5" /> 上传音频 / 视频
@@ -210,8 +239,53 @@ export default function Library() {
         <div className="text-xs text-muted-foreground">共 {materials.length} 个素材</div>
       </div>
 
-      <div className="grid gap-3 p-6 md:grid-cols-2 xl:grid-cols-3">
-        {list.map((m) => {
+      {/* 源语语言筛选 */}
+      <div className="mx-6 mt-3 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs text-muted-foreground">源语</span>
+        <button
+          onClick={() => setLangFilter('all')}
+          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+            langFilter === 'all' ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'
+          }`}
+        >
+          全部 {materials.length}
+        </button>
+        {LANGUAGES.filter((l) => langCounts[l.code]).map((l) => (
+          <button
+            key={l.code}
+            onClick={() => setLangFilter(l.code)}
+            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+              langFilter === l.code ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'
+            }`}
+          >
+            {l.label} {langCounts[l.code]}
+          </button>
+        ))}
+        {langCounts.none ? (
+          <button
+            onClick={() => setLangFilter('none')}
+            className={`rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground transition-colors ${
+              langFilter === 'none' ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'
+            }`}
+          >
+            未标注 {langCounts.none}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="space-y-6 p-6">
+        {grouped.map((g) => (
+          <section key={g.key}>
+            <div className="mb-2 flex items-center gap-2">
+              <h2 className="text-sm font-semibold">
+                {g.key === 'none' ? '未标注语言' : langLabel(g.key)}
+              </h2>
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                {g.items.length}
+              </Badge>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {g.items.map((m) => {
           const rounds = sessions.filter((s) => s.materialId === m.id).length;
           return (
             <Card key={m.id} className="group p-4">
@@ -223,6 +297,13 @@ export default function Library() {
                   <div className="truncate text-sm font-medium hover:underline">{m.title}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span>{fmtSec(Math.max(0, m.trim.end - m.trim.start))}</span>
+                    <span>·</span>
+                    <Badge
+                      variant={m.language ? 'secondary' : 'outline'}
+                      className={`px-1 py-0 text-[10px] ${m.language ? '' : 'text-muted-foreground'}`}
+                    >
+                      {m.language ? langShort(m.language) : '未标注'}
+                    </Badge>
                     <span>·</span>
                     {m.kind === 'video' ? (
                       <>
@@ -300,10 +381,14 @@ export default function Library() {
             </Card>
           );
         })}
+            </div>
+          </section>
+        ))}
         {!list.length ? (
-          <div className="col-span-full">
-            <Empty icon={<AudioLines className="h-6 w-6 text-muted-foreground" />} text="还没有素材，先上传一段音频开始练习" />
-          </div>
+          <Empty
+            icon={<AudioLines className="h-6 w-6 text-muted-foreground" />}
+            text={langFilter === 'all' ? '还没有素材，先上传一段音频开始练习' : '该语言下暂无素材'}
+          />
         ) : null}
       </div>
 

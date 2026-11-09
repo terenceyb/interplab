@@ -13,6 +13,12 @@ interface Props {
   fontSize?: number;
   lineHeight?: number;
   hide?: boolean;
+  /**
+   * 是否跟随播放高亮。
+   * false 时只做静态呈现（默认行为）：不高亮、不淡化、不自动滚动，
+   * 避免在「只呈现稿件」模式下被播放进度牵着走。
+   */
+  follow?: boolean;
   onSentenceClick?: (i: number) => void;
   className?: string;
 }
@@ -28,6 +34,7 @@ export function ScriptView({
   fontSize = 18,
   lineHeight = 1.9,
   hide = false,
+  follow = true,
   onSentenceClick,
   className,
 }: Props) {
@@ -35,12 +42,13 @@ export function ScriptView({
   const activeRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
+    if (!follow) return;
     const el = activeRef.current;
     const box = boxRef.current;
     if (!el || !box) return;
     const top = el.offsetTop - box.clientHeight / 2 + el.clientHeight / 2;
     box.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-  }, [currentIdx]);
+  }, [currentIdx, follow]);
 
   const termRe = useMemo(() => {
     const list = terms.filter((t) => t.trim().length > 1).slice(0, 200);
@@ -85,7 +93,7 @@ export function ScriptView({
       style={{ fontSize, lineHeight }}
     >
       {sentences.map((s, i) => {
-        const state = i < currentIdx ? 'read' : i === currentIdx ? 'current' : 'future';
+        const state = !follow ? 'idle' : i < currentIdx ? 'read' : i === currentIdx ? 'current' : 'future';
         const pieces = maskMode === 'none' ? [{ text: s.text, masked: false }] : maskSentence(s.text, maskMode, maskRatio);
         return (
           <span key={s.id}>
