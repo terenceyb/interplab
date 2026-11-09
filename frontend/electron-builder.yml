@@ -1,0 +1,36 @@
+appId: cn.evanhub.interplab
+productName: InterpLab
+copyright: Copyright © InterpLab
+
+directories:
+  output: release
+  buildResources: build
+
+# 打包后用 resedit 写入图标与版本信息
+afterPack: electron/after-pack.cjs
+
+# 前端已经由 Vite 打包成 dist，node_modules 全是构建期依赖，不进包
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - '!node_modules/**/*'
+
+asar: true
+compression: normal
+
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: InterpLab-${version}-win-x64.exe
+  # 不买证书；图标与版本信息由 afterPack 用纯 JS 写入，不依赖 wine/rcedit
+  signAndEditExecutable: false
+
+portable:
+  artifactName: InterpLab-${version}-win-x64.exe
+  # 便携运行时解压到临时目录，不改注册表、不写系统目录
+  unpackDirName: InterpLab
+  requestExecutionLevel: user

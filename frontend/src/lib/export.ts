@@ -1,3 +1,4 @@
+import { browserDownload, saveBlob } from '@/lib/desktop';
 import type { Material, Session } from '@/types';
 import { MARKER_MAP, MODE_LABEL } from '@/types';
 import { fmtSec } from './metrics';
@@ -151,16 +152,13 @@ export function buildBundle(
   };
 }
 
-export function download(name: string, content: string | Blob, mime = 'text/plain') {
+export async function download(name: string, content: string | Blob, mime = 'text/plain') {
   const blob = typeof content === 'string' ? new Blob([content], { type: `${mime};charset=utf-8` }) : content;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  // 桌面版走原生「另存为」，浏览器继续用 a[download]
+  const outcome = await saveBlob(name, blob);
+  if (outcome !== 'unsupported') return outcome;
+  browserDownload(name, blob);
+  return 'saved' as const;
 }
 
 export function reportText(s: Session, m?: Material): string {
@@ -173,8 +171,8 @@ export function reportText(s: Session, m?: Material): string {
   lines.push(`生成时间：${new Date().toLocaleString('zh-CN')}`);
   lines.push('');
   lines.push(`素材：${s.materialTitle}`);
-  lines.push(`训练类型：${MODE_LABEL[s.mode]}　轮次：第 ${s.attemptNumber} 轮`);
-  lines.push(`训练日期：${new Date(s.createdAt).toLocaleString('zh-CN')}　时长：${fmtSec(s.duration)}`);
+  lines.push(`训练类型：${MODE_LABEL[s.mode]}  轮次：第 ${s.attemptNumber} 轮`);
+  lines.push(`训练日期：${new Date(s.createdAt).toLocaleString('zh-CN')}  时长：${fmtSec(s.duration)}`);
   if (m) lines.push(`素材标签：${[m.difficulty, m.accent, m.speechRate, ...(m.tags || [])].filter(Boolean).join(' / ')}`);
   lines.push('');
   lines.push('【标记统计】');

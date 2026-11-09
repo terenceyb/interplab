@@ -1,5 +1,6 @@
+import { browserDownload, saveBlob } from '@/lib/desktop';
 import { useRef, useState } from 'react';
-import { FolderOpen, Package, Upload, DownloadCloud } from 'lucide-react';
+import { FolderOpen, Package, Upload, DownloadCloud, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -49,8 +50,8 @@ export function PackageDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       });
       await refresh();
       setMsg({ ok: true, text: describe(r) });
-    } catch (e: any) {
-      setMsg({ ok: false, text: String(e?.message || e) });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
       setPct(100);
@@ -68,8 +69,8 @@ export function PackageDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       });
       await refresh();
       setMsg({ ok: true, text: describe(r) });
-    } catch (e: any) {
-      setMsg({ ok: false, text: String(e?.message || e) });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
       setPct(100);
@@ -90,26 +91,25 @@ export function PackageDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         },
       );
       const name = `interplab-数据包-${new Date().toISOString().slice(0, 10)}.ipkg`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      const size = `${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+      const outcome = await saveBlob(name, blob);
+      if (outcome === 'unsupported') browserDownload(name, blob);
+      if (outcome === 'canceled') {
+        setMsg({ ok: false, text: '已取消保存，数据包没有写出' });
+        return;
+      }
       setMsg({
         ok: true,
-        text: `已导出 ${name}（${(blob.size / 1024 / 1024).toFixed(1)} MB）· 素材 ${materials.length} · 记录 ${sessions.length}`,
+        text: `已导出 ${name}（${size}）· 素材 ${materials.length} · 记录 ${sessions.length}`,
       });
-    } catch (e: any) {
-      setMsg({ ok: false, text: String(e?.message || e) });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
   };
 
-  const tabs: { key: Tab; label: string; icon: any }[] = [
+  const tabs: { key: Tab; label: string; icon: LucideIcon }[] = [
     { key: 'import', label: '导入数据包', icon: Package },
     { key: 'folder', label: '导入文件夹', icon: FolderOpen },
     { key: 'export', label: '导出数据包', icon: DownloadCloud },

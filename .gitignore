@@ -14,3 +14,9 @@ dist
 
 # 本地预览截图（不入库）
 /shot-*.png
+
+# Electron 打包产物（体积大，不进仓库）
+/frontend/release/
+
+# 桌面版发布物（74MB，走 Releases 分发，不进仓库）
+/InterpLab-*.exe

@@ -25,6 +25,30 @@
 | 主题 | 全局浅色 / 深色一键切换（侧栏底部与训练页顶栏），首屏无闪白 |
 | 幻灯片呈现 | PPTX / PDF **按原版式呈现**（母版背景、图片、表格、字号颜色），可切文字版做遮挡训练 |
 
+## 桌面版（Windows 10 / 11，免安装）
+
+发布物是一个**绿色单文件 exe**，双击即用，不需要安装 Node、不需要联网、不写注册表：
+
+```
+InterpLab-1.0.0-win-x64.exe
+```
+
+- 首次双击时 Windows 可能提示「已保护你的电脑」——因为没买代码签名证书。点**更多信息 → 仍要运行**即可，之后不再提示。
+- 数据放在 exe 同目录的 `InterpLabData/`，整个文件夹拷到 U 盘或另一台电脑，素材、稿件、训练记录一起带走。
+- 若 exe 放在只读位置（如 `C:\Program Files`），自动回落到 `%APPDATA%\InterpLab`。
+- 首次录音前确认系统已允许桌面应用使用麦克风：**设置 → 隐私和安全性 → 麦克风 → 允许桌面应用访问麦克风**。
+
+自己打包（Linux / macOS / Windows 都可以，产物为 Windows x64）：
+
+```bash
+cd frontend
+pnpm install
+pnpm app:build            # 产物在 frontend/release/
+pnpm app:run              # 本机直接以桌面模式调试
+```
+
+打包配置见 `electron-builder.yml`；图标与版本信息由 `electron/after-pack.cjs` 用纯 JS 写入，不依赖 wine。
+
 ## 本地运行
 
 ```bash

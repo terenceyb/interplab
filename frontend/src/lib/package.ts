@@ -97,7 +97,7 @@ export async function exportPackage(
     let srcFile = '';
     if (m.slidesBlobKey) {
       const srcBlob = await db.getAudio(m.slidesBlobKey).catch(() => undefined);
-      if (srcBlob) srcFile = await putBlob(m.slidesBlobKey, srcBlob, 'src-');
+      if (srcBlob) srcFile = await putBlob(m.slidesBlobKey, srcBlob);
     }
     materials.push({ ...m, __audioFile: audioFile, __imageMap: imageMap, __srcFile: srcFile });
   }
