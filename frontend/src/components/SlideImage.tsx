@@ -7,31 +7,29 @@ import { cn } from '@/lib/utils';
  * 图片懒加载 + 缓存上限 8 张，避免整份 PPT 的图片常驻内存。
  */
 export function SlideImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
-  const [url, setUrl] = useState<string>(() => (/^(data:|blob:|https?:)/i.test(src) ? src : ''));
-  const [failed, setFailed] = useState(false);
+  const inline = /^(data:|blob:|https?:)/i.test(src);
+  /** 结果记上来源 src：换图时自然失效，不必在 effect 里清空状态 */
+  const [hit, setHit] = useState<{ src: string; url: string } | null>(null);
+  const [broken, setBroken] = useState<string>('');
+  const url = inline ? src : hit?.src === src ? hit.url : '';
+  const failed = broken === src;
 
   useEffect(() => {
+    if (inline) return;
     let alive = true;
-    if (/^(data:|blob:|https?:)/i.test(src)) {
-      setUrl(src);
-      return () => {
-        alive = false;
-      };
-    }
-    setUrl('');
     resolveImage(src)
       .then((u) => {
-        if (alive) setUrl(u);
+        if (alive) setHit({ src, url: u });
       })
-      .catch(() => alive && setFailed(true));
+      .catch(() => alive && setBroken(src));
     return () => {
       alive = false;
     };
-  }, [src]);
+  }, [src, inline]);
 
   if (failed) return null;
   if (!url) {
-    return <div className={cn('animate-pulse rounded bg-white/10', className)} aria-label={alt} />;
+    return <div className={cn('animate-pulse rounded bg-muted', className)} aria-label={alt} />;
   }
   return (
     <img
@@ -39,7 +37,7 @@ export function SlideImage({ src, alt, className }: { src: string; alt: string; 
       alt={alt}
       loading="lazy"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setBroken(src)}
       className={className}
     />
   );

@@ -5,19 +5,19 @@ import { fmtBytes, runCleanup, useResources, type CleanupResult } from '@/lib/pe
 import { cn } from '@/lib/utils';
 
 /**
- * 左下角常驻资源监视器：内存 / 存储 / 缓存 / DOM。
- * 颜色只在真正需要关注时变红，避免长期干扰；
- * 一键清理会释放 objectURL、图片缓存、VAD 缓存并清掉孤儿音频。
+ * 常驻资源监视器：内存 / 存储 / 缓存 / DOM。
+ * 位置避让：普通页贴**右下角**（左下角是侧栏「我」的资料区，不能压住）；
+ * 训练页底部是主控制区，收成一枚小球贴在右下方的控制条之上。
+ * 配色跟随全局主题，深色模式下不再出现一块白色浮标。
  */
 export function ResourceMonitor({ forceCompact }: { forceCompact?: boolean } = {}) {
   const { snap, busy, setBusy } = useResources(2500);
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<CleanupResult | null>(null);
   const loc = useLocation();
-  // 训练页底部是主控制区，监视器收成小球贴右下角
   const compact = forceCompact ?? loc.pathname.startsWith('/train');
-  /** 训练页是深色界面，监视器也跟着换配色，避免一块白斑 */
-  const dark = !!forceCompact;
+  /** 展开面板比浮标宽，训练页右侧有 16px 余量，统一贴右边 */
+  const pos = compact ? 'bottom-20 right-3' : 'bottom-4 right-4';
 
   const heapPct = snap.heapPct ?? 0;
   const storagePct = snap.storageQuota ? snap.storageUsed / snap.storageQuota : 0;
@@ -40,11 +40,8 @@ export function ResourceMonitor({ forceCompact }: { forceCompact?: boolean } = {
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          'fixed z-40 flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] shadow-sm backdrop-blur transition-colors',
-          dark
-            ? 'border-white/10 bg-slate-900/90 text-slate-300 hover:bg-slate-800'
-            : 'bg-background/95 hover:bg-accent',
-          compact ? 'bottom-20 right-3' : 'bottom-4 left-4',
+          'fixed z-40 flex items-center gap-1.5 rounded-full border bg-card/95 px-2.5 py-1.5 text-[11px] text-card-foreground shadow-sm backdrop-blur transition-colors hover:bg-accent',
+          pos,
         )}
         title="资源占用（点击查看详情）"
       >
@@ -68,9 +65,8 @@ export function ResourceMonitor({ forceCompact }: { forceCompact?: boolean } = {
   return (
     <div
       className={cn(
-        'fixed z-40 w-[280px] rounded-lg border p-3 text-xs shadow-lg backdrop-blur',
-        dark ? 'border-white/10 bg-slate-900/97 text-slate-200' : 'bg-background/97',
-        compact ? 'bottom-20 right-3' : 'bottom-4 left-4',
+        'fixed z-40 w-[280px] rounded-lg border bg-card/97 p-3 text-xs text-card-foreground shadow-lg backdrop-blur',
+        pos,
       )}
     >
       <div className="mb-2 flex items-center justify-between">

@@ -235,18 +235,18 @@ function Runner({
         <>
           <button
             onClick={() => (player.playing ? player.pause() : playSegment())}
-            className="flex h-11 items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 text-sm font-medium text-slate-100 hover:bg-white/10"
+            className="flex h-11 items-center gap-2 rounded-lg border border bg-muted/40 px-4 text-sm font-medium text-foreground hover:bg-accent"
           >
             {player.playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {player.playing ? '暂停' : '播放本段'}
           </button>
           <button
             onClick={() => playSegment()}
-            className="flex h-11 items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 text-sm text-slate-200 hover:bg-white/10"
+            className="flex h-11 items-center gap-2 rounded-lg border border bg-muted/40 px-4 text-sm text-foreground hover:bg-accent"
           >
             <RotateCcw className="h-4 w-4" /> 重播
           </button>
-          <div className="flex items-center overflow-hidden rounded-lg border border-white/15">
+          <div className="flex items-center overflow-hidden rounded-lg border border-border">
             <button
               onClick={() => {
                 setIdx(Math.max(0, idx - 1));
@@ -254,12 +254,12 @@ function Runner({
                 setStage('ready');
               }}
               disabled={idx <= 0}
-              className="h-11 px-2.5 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-30"
+              className="h-11 px-2.5 text-xs text-muted-foreground hover:bg-accent disabled:opacity-30"
               title="上一段"
             >
               上一段
             </button>
-            <span className="h-5 w-px bg-white/15" />
+            <span className="h-5 w-px bg-border" />
             <button
               onClick={() => {
                 setIdx(Math.min(segments.length - 1, idx + 1));
@@ -267,7 +267,7 @@ function Runner({
                 setStage('ready');
               }}
               disabled={idx >= segments.length - 1}
-              className="h-11 px-2.5 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-30"
+              className="h-11 px-2.5 text-xs text-muted-foreground hover:bg-accent disabled:opacity-30"
               title="下一段"
             >
               下一段
@@ -284,27 +284,27 @@ function Runner({
             <button
               onClick={startRecording}
               disabled={!seg}
-              className="flex h-11 items-center gap-2 rounded-lg bg-emerald-500 px-5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-40"
+              className="flex h-11 items-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
             >
               <Mic className="h-4 w-4" /> 开始口译录制
             </button>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <Badge variant="secondary" className="bg-white/10 text-[11px] text-slate-300">
+            <Badge variant="secondary" className="bg-muted text-[11px] text-muted-foreground">
               已完成 {done}/{segments.length} 段
             </Badge>
             <button
               onClick={finish}
               disabled={saving}
-              className="h-9 rounded-lg border border-white/15 px-3 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-50"
+              className="h-9 rounded-lg border border-border px-3 text-xs text-foreground hover:bg-accent disabled:opacity-50"
             >
               结束并复盘
             </button>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-              <Label className="text-[11px] text-slate-500">倒计时</Label>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+              <Label className="text-[11px] text-muted-foreground/80">倒计时</Label>
               <Input
                 type="number"
-                className="h-7 w-14 border-white/15 bg-white/5 text-xs text-slate-100"
+                className="h-7 w-14 border bg-muted/40 text-xs text-foreground"
                 value={countdown}
                 min={0}
                 max={10}
@@ -329,19 +329,19 @@ function Runner({
                   className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors ${
                     i === idx
                       ? 'border-sky-400/60 bg-sky-400/10 text-white'
-                      : 'border-white/10 text-slate-300 hover:bg-white/5'
+                      : 'border-border text-muted-foreground hover:bg-accent'
                   }`}
                 >
-                  <span className="w-5 tabular-nums text-slate-500">{i + 1}</span>
+                  <span className="w-5 tabular-nums text-muted-foreground/80">{i + 1}</span>
                   <span className="flex-1 tabular-nums">{(s.end - s.start).toFixed(1)}s</span>
                   {attempts[s.index] ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                   ) : s.flag ? (
-                    <span className="text-[10px] text-amber-400">待调整</span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400">待调整</span>
                   ) : null}
                 </button>
               ))}
-              {!segments.length ? <p className="text-[11px] text-slate-500">正在分析分段…</p> : null}
+              {!segments.length ? <p className="text-[11px] text-muted-foreground/80">正在分析分段…</p> : null}
             </div>
           </RailCard>
 
@@ -354,7 +354,7 @@ function Runner({
             />
             {noteOn ? (
               <button
-                className="mt-2 w-full rounded border border-white/15 py-1 text-[11px] text-slate-300 hover:bg-white/10"
+                className="mt-2 w-full rounded border border-border py-1 text-[11px] text-muted-foreground hover:bg-accent"
                 onClick={() => seg != null && setStrokes((prev) => ({ ...prev, [seg.index]: [] }))}
               >
                 清空本段笔记（{(strokes[seg?.index ?? -1] || []).length} 笔）
@@ -363,7 +363,7 @@ function Runner({
           </RailCard>
 
           <RailCard title="快捷键">
-            <div className="space-y-0.5 text-[11px] text-slate-400">
+            <div className="space-y-0.5 text-[11px] text-muted-foreground">
               {[
                 ['Space', '播放 / 暂停 / 完成本段'],
                 ['Enter', '开始录制'],
@@ -373,7 +373,7 @@ function Runner({
                 ['← / →', '前后 5 秒'],
               ].map(([k, v]) => (
                 <div key={k} className="flex gap-2">
-                  <span className="w-14 shrink-0 rounded bg-white/10 px-1 text-center font-mono text-[10px] text-slate-300">
+                  <span className="w-14 shrink-0 rounded bg-muted px-1 text-center font-mono text-[10px] text-muted-foreground">
                     {k}
                   </span>
                   <span>{v}</span>
@@ -386,23 +386,23 @@ function Runner({
     >
       <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto">
         {/* 当前段信息 */}
-        <div className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+        <div className="shrink-0 rounded-lg border border bg-card px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-sky-500/15 px-2 py-0.5 text-[11px] font-medium text-sky-300">
+            <span className="rounded bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400">
               第 {idx + 1} / {segments.length} 段
             </span>
-            <span className="font-mono text-sm tabular-nums text-slate-300">
+            <span className="font-mono text-sm tabular-nums text-muted-foreground">
               {seg ? `${fmtSec(seg.start)} – ${fmtSec(seg.end)}` : '—'}
             </span>
-            <span className="text-xs text-slate-500">{seg ? `${(seg.end - seg.start).toFixed(1)}s` : ''}</span>
+            <span className="text-xs text-muted-foreground/80">{seg ? `${(seg.end - seg.start).toFixed(1)}s` : ''}</span>
             {attempts[seg?.index ?? -1] ? (
-              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">本段已录</span>
+              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-600 dark:text-emerald-400">本段已录</span>
             ) : null}
-            <span className="ml-auto text-[11px] text-slate-500">
+            <span className="ml-auto text-[11px] text-muted-foreground/80">
               {stage === 'recording' ? '正在录制 · Esc 完成本段' : '播放源语 → 记笔记 → 录音 → 完成本段'}
             </span>
           </div>
-          <p className={`mt-2 text-sm leading-relaxed ${seg?.text ? 'text-slate-300' : 'text-slate-500'}`}>
+          <p className={`mt-2 text-sm leading-relaxed ${seg?.text ? 'text-muted-foreground' : 'text-muted-foreground/80'}`}>
             {seg?.text || '本段暂无对齐文本（未导入稿件时按语音停顿切分，不影响训练）'}
           </p>
         </div>
@@ -412,7 +412,7 @@ function Runner({
         ) : null}
 
         {/* 波形 */}
-        <div className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+        <div className="shrink-0 rounded-lg border border bg-card p-2">
           <Waveform
             peaks={material.peaks}
             duration={material.duration}
@@ -434,24 +434,24 @@ function Runner({
         {stage === 'recording' ? (
           <div className="shrink-0 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2">
             <div className="mb-1 flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1 font-medium text-rose-300">
+              <span className="flex items-center gap-1 font-medium text-rose-600 dark:text-rose-300">
                 <Mic className="h-3 w-3 animate-pulse" /> 正在录制译语
               </span>
-              <span className="font-mono tabular-nums text-rose-300">{recTime.toFixed(1)}s</span>
+              <span className="font-mono tabular-nums text-rose-600 dark:text-rose-300">{recTime.toFixed(1)}s</span>
             </div>
             <LevelMeter wave={level.wave} level={level.rms} />
           </div>
         ) : null}
 
         {cdLeft != null ? (
-          <div className="flex h-14 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-2xl font-bold text-emerald-300">
+          <div className="flex h-14 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-2xl font-bold text-emerald-600 dark:text-emerald-600 dark:text-emerald-400">
             {cdLeft}
           </div>
         ) : null}
 
         {/* 笔记板 */}
         {noteOn ? (
-          <div className="min-h-[220px] flex-1 rounded-lg border border-white/10 bg-white p-2">
+          <div className="min-h-[220px] flex-1 rounded-lg border border-border bg-white p-2">
             <NotePad
               strokes={strokes[seg?.index ?? -1] || []}
               startedAt={noteStart}
@@ -481,7 +481,7 @@ function AttemptPlayback({ attempt }: { attempt: Attempt }) {
   }, [attempt.audioKey]);
   return (
     <div className="shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
-      <div className="mb-1 text-[11px] text-slate-400">本段译语录音 · {attempt.duration.toFixed(1)}s</div>
+      <div className="mb-1 text-[11px] text-muted-foreground">本段译语录音 · {attempt.duration.toFixed(1)}s</div>
       <Waveform peaks={attempt.peaks} duration={attempt.duration} height={40} color="#34d399" />
       {url ? <audio src={url} controls className="mt-1 h-8 w-full" /> : null}
     </div>

@@ -93,7 +93,13 @@ export async function exportPackage(
         }
       }
     }
-    materials.push({ ...m, __audioFile: audioFile, __imageMap: imageMap });
+    // 原始 PPT/PDF 一起打包，导入后还能按原版式看稿
+    let srcFile = '';
+    if (m.slidesBlobKey) {
+      const srcBlob = await db.getAudio(m.slidesBlobKey).catch(() => undefined);
+      if (srcBlob) srcFile = await putBlob(m.slidesBlobKey, srcBlob, 'src-');
+    }
+    materials.push({ ...m, __audioFile: audioFile, __imageMap: imageMap, __srcFile: srcFile });
   }
 
   // 训练记录：译语录音
@@ -210,6 +216,7 @@ export async function importPackage(
     onProgress?.(10 + Math.round((i / Math.max(1, list.length)) * 50), `导入素材 ${src.title || ''}`);
     try {
       const audioKey = await restore(src.__audioFile);
+      const slidesBlobKey = src.__srcFile ? (await restore(src.__srcFile)) || undefined : undefined;
       if (!audioKey) {
         result.skipped++;
         warnings.push(`「${src.title}」缺少源语文件，已跳过`);
@@ -257,6 +264,7 @@ export async function importPackage(
         sampleRate,
         trim,
         slides,
+        slidesBlobKey,
         createdAt: src.createdAt || Date.now(),
         sentences: Array.isArray(src.sentences) ? src.sentences : [],
         tags: Array.isArray(src.tags) ? src.tags : [],
@@ -267,6 +275,7 @@ export async function importPackage(
       };
       delete (material as any).__audioFile;
       delete (material as any).__imageMap;
+      delete (material as any).__srcFile;
       await db.putMaterial(material);
       materialIndex.set(src.id, material);
       result.materials++;

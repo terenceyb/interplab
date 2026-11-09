@@ -171,11 +171,17 @@ function Detail({
   const handleSlides = async (doc: ParsedDoc | null, fileName?: string) => {
     if (!doc) {
       setSlides(undefined);
-      await update({ slides: undefined, slidesFile: undefined, slidesSource: undefined, docKind: 'text' });
+      await update({ slides: undefined, slidesFile: undefined, slidesSource: undefined, slidesBlobKey: undefined, docKind: 'text' });
       return;
     }
     setSlides(doc.slides);
-    await update({ slides: doc.slides, slidesSource: doc.source, slidesFile: fileName, docKind: 'slides' });
+    await update({
+      slides: doc.slides,
+      slidesSource: doc.source,
+      slidesFile: fileName,
+      slidesBlobKey: doc.sourceKey,
+      docKind: 'slides',
+    });
   };
 
   /** 稿件上传（Word / 文本 / 字幕） */

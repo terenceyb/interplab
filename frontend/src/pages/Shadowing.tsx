@@ -97,21 +97,21 @@ function Runner({
           <button
             onClick={() => beat(0)}
             disabled={t.state !== 'training'}
-            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+            className="h-8 rounded-md border border-border px-2 text-[11px] text-foreground hover:bg-accent disabled:opacity-40"
           >
             打点 E
           </button>
           <button
             onClick={() => beat(-1)}
             disabled={t.state !== 'training'}
-            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+            className="h-8 rounded-md border border-border px-2 text-[11px] text-foreground hover:bg-accent disabled:opacity-40"
           >
             偏短
           </button>
           <button
             onClick={() => beat(1)}
             disabled={t.state !== 'training'}
-            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+            className="h-8 rounded-md border border-border px-2 text-[11px] text-foreground hover:bg-accent disabled:opacity-40"
           >
             偏长
           </button>
@@ -123,9 +123,9 @@ function Runner({
           <RailCard title="跟述参数">
             <div className="space-y-2">
               <div>
-                <Label className="text-[11px] text-slate-400">跟述语言</Label>
+                <Label className="text-[11px] text-muted-foreground">跟述语言</Label>
                 <Select value={lang} onValueChange={(v) => setLang(v as any)}>
-                  <SelectTrigger className="h-8 border-white/15 bg-white/5 text-xs text-slate-200">
+                  <SelectTrigger className="h-8 border bg-muted/40 text-xs text-foreground">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -135,9 +135,9 @@ function Runner({
                 </Select>
               </div>
               <div>
-                <Label className="text-[11px] text-slate-400">跟述类型</Label>
+                <Label className="text-[11px] text-muted-foreground">跟述类型</Label>
                 <Select value={type} onValueChange={(v) => setType(v as any)}>
-                  <SelectTrigger className="h-8 border-white/15 bg-white/5 text-xs text-slate-200">
+                  <SelectTrigger className="h-8 border bg-muted/40 text-xs text-foreground">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -147,9 +147,9 @@ function Runner({
                 </Select>
               </div>
               <div>
-                <Label className="text-[11px] text-slate-400">目标 EVS（秒）</Label>
+                <Label className="text-[11px] text-muted-foreground">目标 EVS（秒）</Label>
                 <Input
-                  className="h-8 border-white/15 bg-white/5 text-xs text-slate-100"
+                  className="h-8 border bg-muted/40 text-xs text-foreground"
                   type="number"
                   step={0.5}
                   value={evsTarget}
@@ -160,9 +160,9 @@ function Runner({
           </RailCard>
 
           <RailCard title="EVS 偏差">
-            <EvsBar dark sourceT={t.player.time} duration={effDur} target={evsTarget} />
-            <div className="mt-2 text-[11px] text-slate-500">
-              已打点 <span className="font-mono text-slate-300">{samples.length}</span> 次 · 复盘时查看偏差曲线
+            <EvsBar sourceT={t.player.time} duration={effDur} target={evsTarget} />
+            <div className="mt-2 text-[11px] text-muted-foreground/80">
+              已打点 <span className="font-mono text-muted-foreground">{samples.length}</span> 次 · 复盘时查看偏差曲线
             </div>
           </RailCard>
 
@@ -181,19 +181,19 @@ function Runner({
       }
     >
       <div className="flex h-full min-h-0 flex-col gap-2">
-        <div className="flex flex-1 flex-col items-center justify-center gap-5 rounded-xl border border-white/10 bg-white/[0.02]">
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 rounded-xl border border-border bg-muted/20">
           <div className="text-center">
             <div className="font-mono text-6xl font-semibold tabular-nums tracking-tight">
               {fmtClock(t.player.time)}
-              <span className="ml-2 text-lg text-slate-500">/ {fmtSec(effDur)}</span>
+              <span className="ml-2 text-lg text-muted-foreground/80">/ {fmtSec(effDur)}</span>
             </div>
-            <div className="mt-2 text-xs text-slate-500">
+            <div className="mt-2 text-xs text-muted-foreground/80">
               {lang === 'source' ? '源语跟述' : '译语跟述'} ·{' '}
               {type === 'phoneme' ? '音位跟述' : '片语跟述'} · 译语已录 {t.elapsed.toFixed(1)}s
             </div>
           </div>
           <div className="w-full max-w-xl px-6">
-            <EvsBar dark sourceT={t.player.time} duration={effDur} target={evsTarget} />
+            <EvsBar sourceT={t.player.time} duration={effDur} target={evsTarget} />
           </div>
           {t.state === 'training' ? (
             <div className="w-full max-w-md px-6">

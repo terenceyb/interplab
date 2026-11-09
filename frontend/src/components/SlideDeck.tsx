@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, EyeOff, Maximize2, Minimize2, StickyNote } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import {
+  ChevronLeft,
+  ChevronRight,
+  EyeOff,
+  FileText,
+  Layers,
+  Maximize2,
+  Minimize2,
+  StickyNote,
+} from 'lucide-react';
 import { SlideImage } from '@/components/SlideImage';
+import { SlideSurface, slideKindOf } from '@/components/slide/SlideSurface';
 import { maskSentence, escapeRe } from '@/lib/text';
 import { cn } from '@/lib/utils';
 import type { SlideData } from '@/types';
@@ -17,8 +26,10 @@ interface Props {
   maskRatio?: number;
   terms?: string[];
   highlightTerms?: boolean;
-  /** 深色训练态（默认已是深色底，可关闭用于素材页预览） */
-  dark?: boolean;
+  /** 原始文件（PPTX / PDF）在 IndexedDB 的 key，有则默认按原版式呈现 */
+  sourceKey?: string;
+  /** 原始文件名，用于判断渲染方式 */
+  fileName?: string;
   /** 是否允许全屏放大（训练页开启） */
   allowFullscreen?: boolean;
   className?: string;
@@ -31,14 +42,12 @@ function SlideText({
   highlightTerms,
   maskMode,
   maskRatio,
-  fs,
 }: {
   text: string;
   terms: string[];
   highlightTerms: boolean;
   maskMode: 'none' | 'tail' | 'random';
   maskRatio: number;
-  fs: number;
 }) {
   const termRe = useMemo(() => {
     const list = terms.filter((t) => t.trim().length > 1).slice(0, 200);
@@ -52,13 +61,16 @@ function SlideText({
     <>
       {pieces.map((p, i) =>
         p.masked ? (
-          <span key={i} className="rounded bg-white/15 px-1 text-transparent" style={{ fontSize: fs }}>
+          <span key={i} className="rounded bg-muted px-1 text-transparent">
             {'█'.repeat(Math.min(14, Math.max(3, Math.round(p.text.replace(/\s/g, '').length / 2))))}
           </span>
         ) : termRe ? (
           p.text.split(termRe).map((seg, j) =>
             termRe.test(seg) ? (
-              <span key={`${i}-${j}`} className="rounded-sm bg-amber-300/25 px-0.5 font-medium text-amber-200">
+              <span
+                key={`${i}-${j}`}
+                className="rounded-sm bg-amber-200/70 px-0.5 font-medium text-amber-900 dark:bg-amber-300/25 dark:text-amber-200"
+              >
                 {seg}
               </span>
             ) : (
@@ -74,9 +86,12 @@ function SlideText({
 }
 
 /**
- * 幻灯片 / PDF 手动翻页器。
- * 不跟随音视频时间轴，按页手动翻页（← / → 或按钮 / 页点），
- * 训练时可全屏放大到整屏，还原「看屏翻译」的实战视角。
+ * 幻灯片 / PDF 翻页器。
+ *
+ * 两种呈现：
+ *  - 原版式（默认）：PDF 画 canvas、PPTX 还原母版与形状位置，和投影仪上看到的一致；
+ *  - 文字版：抽取出来的标题 + 要点，便于做术语高亮与遮挡训练。
+ * 按页手动翻页（← / → / 按钮 / 页点），可全屏放大，还原「看屏翻译」的实战视角。
  */
 export function SlideDeck({
   slides,
@@ -89,12 +104,21 @@ export function SlideDeck({
   maskRatio = 0.2,
   terms = [],
   highlightTerms = true,
+  sourceKey,
+  fileName,
   allowFullscreen = false,
   className,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [full, setFull] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const kind = slideKindOf(fileName);
+  const canOriginal = kind !== 'none' && !!sourceKey;
+  /** 用户手动切过的方式只在同一份文件上生效，换了素材自动回到「能原版式就原版式」 */
+  const sourceTag = sourceKey ?? fileName ?? '';
+  const [choice, setChoice] = useState<{ tag: string; mode: 'original' | 'text' } | null>(null);
+  const mode = choice && choice.tag === sourceTag ? choice.mode : canOriginal ? 'original' : 'text';
+  const setMode = (next: 'original' | 'text') => setChoice({ tag: sourceTag, mode: next });
   const cur = slides[Math.min(Math.max(0, index), slides.length - 1)];
 
   const go = useCallback(
@@ -129,7 +153,7 @@ export function SlideDeck({
 
   if (hide) {
     return (
-      <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-slate-900/60 text-slate-400">
+      <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed text-muted-foreground">
         <EyeOff className="mb-2 h-6 w-6" />
         <p className="text-sm">幻灯片已隐藏 · 纯听状态</p>
         <p className="mt-1 text-xs">按 H 或右上角开关恢复</p>
@@ -137,163 +161,177 @@ export function SlideDeck({
     );
   }
 
-  const hasImage = cur.images.length > 0;
   const pageLabel = cur.page ? `第 ${cur.page} 页` : `第 ${cur.index + 1} 页`;
+  const original = mode === 'original' && canOriginal;
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col gap-2', className)}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
         <div
           ref={boxRef}
-          className={cn(
-            'min-h-0 flex-1 overflow-y-auto rounded-lg bg-slate-900 p-5 text-slate-100 shadow-inner sm:p-7',
-            full && 'fixed inset-0 z-50 rounded-none p-10',
-          )}
-          style={{ fontSize, lineHeight }}
+          className={cn('min-h-0 flex-1 overflow-auto p-3 sm:p-4', full && 'fixed inset-0 z-50 rounded-none p-8')}
+          style={original ? undefined : { fontSize, lineHeight }}
         >
-          <div className={cn('flex gap-6', hasImage ? 'flex-col lg:flex-row' : 'flex-col')}>
-            <div className="min-w-0 flex-1">
-              {cur.title ? (
-                <h3 className="mb-4 border-b border-white/15 pb-3 text-[1.3em] font-semibold leading-snug text-white">
-                  <SlideText
-                    text={cur.title}
-                    terms={terms}
-                    highlightTerms={highlightTerms}
-                    maskMode={maskMode}
-                    maskRatio={maskRatio}
-                    fs={fontSize}
-                  />
-                </h3>
-              ) : null}
-              {cur.bullets.length ? (
-                <ul className="space-y-2.5">
-                  {cur.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2.5">
-                      <span className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400/80" />
-                      <span className="min-w-0 flex-1">
-                        <SlideText
-                          text={b}
-                          terms={terms}
-                          highlightTerms={highlightTerms}
-                          maskMode={maskMode}
-                          maskRatio={maskRatio}
-                          fs={fontSize}
-                        />
-                      </span>
-                    </li>
+          {original ? (
+            <SlideSurface
+              sourceKey={sourceKey}
+              kind={kind}
+              pageNo={cur.page ?? index + 1}
+              index={index}
+              className={full ? 'max-h-full' : undefined}
+            />
+          ) : (
+            <div className={cn('flex gap-6', cur.images.length ? 'flex-col lg:flex-row' : 'flex-col')}>
+              <div className="min-w-0 flex-1">
+                {cur.title ? (
+                  <h3 className="mb-4 border-b pb-3 text-[1.3em] font-semibold leading-snug">
+                    <SlideText
+                      text={cur.title}
+                      terms={terms}
+                      highlightTerms={highlightTerms}
+                      maskMode={maskMode}
+                      maskRatio={maskRatio}
+                    />
+                  </h3>
+                ) : null}
+                {cur.bullets.length ? (
+                  <ul className="space-y-2.5">
+                    {cur.bullets.map((b, i) => (
+                      <li key={i} className="flex gap-2.5">
+                        <span className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
+                        <span className="min-w-0 flex-1">
+                          <SlideText
+                            text={b}
+                            terms={terms}
+                            highlightTerms={highlightTerms}
+                            maskMode={maskMode}
+                            maskRatio={maskRatio}
+                          />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {!cur.title && !cur.bullets.length ? (
+                  <p className="text-sm text-muted-foreground">（本页无文字内容，可能是纯图片页）</p>
+                ) : null}
+                {showNotes && cur.notes ? (
+                  <p className="mt-4 border-t pt-3 text-[0.8em] text-muted-foreground">备注：{cur.notes}</p>
+                ) : null}
+              </div>
+              {cur.images.length ? (
+                <div className="shrink-0 space-y-2 lg:w-[42%]">
+                  {cur.images.slice(0, 2).map((src, i) => (
+                    <SlideImage
+                      key={src}
+                      src={src}
+                      alt={`${pageLabel} 配图 ${i + 1}`}
+                      className="w-full rounded border object-contain"
+                    />
                   ))}
-                </ul>
-              ) : null}
-              {!cur.title && !cur.bullets.length ? (
-                <p className="text-sm text-slate-400">（本页无文字内容，可能是纯图片页）</p>
-              ) : null}
-              {showNotes && cur.notes ? (
-                <p className="mt-4 border-t border-white/10 pt-3 text-[0.8em] text-slate-400">备注：{cur.notes}</p>
+                </div>
               ) : null}
             </div>
-            {hasImage ? (
-              <div className="shrink-0 space-y-2 lg:w-[42%]">
-                {cur.images.slice(0, 2).map((src, i) => (
-                  <SlideImage
-                    key={src}
-                    src={src}
-                    alt={`${pageLabel} 配图 ${i + 1}`}
-                    className="w-full rounded border border-white/10 object-contain"
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
+          )}
         </div>
 
         {/* 全屏时的悬浮翻页条：Esc 退出 */}
         {full ? (
-          <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow-xl backdrop-blur">
-            <button className="rounded px-2 py-1 hover:bg-white/10 disabled:opacity-40" disabled={index <= 0} onClick={() => go(index - 1)}>
+          <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-1.5 text-xs shadow-xl backdrop-blur">
+            <button
+              className="rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+              disabled={index <= 0}
+              onClick={() => go(index - 1)}
+            >
               上一页
             </button>
-            <span className="tabular-nums text-slate-400">
+            <span className="tabular-nums text-muted-foreground">
               {index + 1} / {slides.length}
             </span>
             <button
-              className="rounded px-2 py-1 hover:bg-white/10 disabled:opacity-40"
+              className="rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
               disabled={index >= slides.length - 1}
               onClick={() => go(index + 1)}
             >
               下一页
             </button>
-            <span className="mx-1 h-3 w-px bg-white/15" />
-            <button className="rounded px-2 py-1 text-slate-400 hover:bg-white/10 hover:text-white" onClick={() => setFull(false)}>
+            <span className="mx-1 h-3 w-px bg-border" />
+            <button className="rounded px-2 py-1 text-muted-foreground hover:bg-accent" onClick={() => setFull(false)}>
               退出（Esc）
             </button>
           </div>
         ) : null}
 
         {/* 页码水印 */}
-        <div className="pointer-events-none absolute right-3 top-2 rounded bg-black/30 px-1.5 py-0.5 text-[11px] tabular-nums text-white/50">
+        <div className="pointer-events-none absolute right-2 top-2 rounded bg-foreground/70 px-1.5 py-0.5 text-[11px] tabular-nums text-background">
           {pageLabel} / 共 {slides.length} 页
         </div>
       </div>
 
-      {/* 翻页控制 */}
-      <div className="flex shrink-0 items-center justify-between gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 text-slate-200 hover:bg-white/10"
+      {/* 翻页与呈现方式 */}
+      <div className="flex shrink-0 items-center gap-1 rounded-md border bg-card px-2 py-1.5">
+        <button
+          className="flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-accent disabled:opacity-40"
           disabled={index <= 0}
           onClick={() => go(index - 1)}
         >
-          <ChevronLeft className="mr-1 h-4 w-4" /> 上一页
-        </Button>
-        <div className="flex max-w-[45%] items-center gap-1 overflow-x-auto">
+          <ChevronLeft className="h-4 w-4" /> 上一页
+        </button>
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto">
           {slides.slice(0, 40).map((_, i) => (
             <button
               key={i}
               onClick={() => go(i)}
               className={cn(
                 'h-1.5 shrink-0 rounded-full transition-all',
-                i === index ? 'w-5 bg-sky-400' : 'w-1.5 bg-white/25 hover:bg-white/50',
+                i === index ? 'w-5 bg-sky-500' : 'w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60',
               )}
               title={`第 ${i + 1} 页`}
             />
           ))}
-          <span className="ml-2 shrink-0 text-xs tabular-nums text-slate-400">
+          <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">
             {index + 1} / {slides.length}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {canOriginal ? (
+            <button
+              onClick={() => setMode(mode === 'original' ? 'text' : 'original')}
+              className={cn(
+                'flex h-7 items-center gap-1 rounded px-1.5 text-[11px] hover:bg-accent',
+                mode === 'original' ? 'text-foreground' : 'text-muted-foreground',
+              )}
+              title={mode === 'original' ? '切换为可遮挡的文字版' : '切换回原版式'}
+            >
+              {mode === 'original' ? <Layers className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+              {mode === 'original' ? '原版式' : '文字版'}
+            </button>
+          ) : null}
           {cur.notes ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className={cn('h-7 text-slate-300 hover:bg-white/10', showNotes && 'text-amber-300')}
+            <button
+              className={cn('flex h-7 w-7 items-center justify-center rounded hover:bg-accent', showNotes && 'text-amber-600')}
               title="显示/隐藏备注"
               onClick={() => setShowNotes((v) => !v)}
             >
               <StickyNote className="h-3.5 w-3.5" />
-            </Button>
+            </button>
           ) : null}
           {allowFullscreen ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-slate-300 hover:bg-white/10"
+            <button
+              className="flex h-7 w-7 items-center justify-center rounded hover:bg-accent"
               title={full ? '退出全屏（Esc）' : '全屏看稿'}
               onClick={() => setFull((v) => !v)}
             >
               {full ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            </Button>
+            </button>
           ) : null}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-slate-200 hover:bg-white/10"
+          <button
+            className="flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-accent disabled:opacity-40"
             disabled={index >= slides.length - 1}
             onClick={() => go(index + 1)}
           >
-            下一页 <ChevronRight className="ml-1 h-4 w-4" />
-          </Button>
+            下一页 <ChevronRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>

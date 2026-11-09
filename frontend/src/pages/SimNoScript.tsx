@@ -1,20 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Timer } from 'lucide-react';
+import { AudioLines, Layers, Timer } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { EvsBar } from '@/components/ScriptView';
 import { SlideDeck } from '@/components/SlideDeck';
 import { DocSlots } from '@/components/train/DocSlots';
 import { RailCard, RailSwitch, TrainShell } from '@/components/train/TrainShell';
-import { LevelMeter } from '@/components/NotePad';
-import { Waveform } from '@/components/Waveform';
-import { VideoStage } from '@/components/VideoStage';
+import { MediaPanel } from '@/components/train/MediaPanel';
+import { PanelBoard, type PanelSpec, type Rect } from '@/components/train/PanelBoard';
 import { useApp } from '@/store/useApp';
 import { useAudioUrl, useHotkeys } from '@/lib/hooks';
 import { buildSession, useSimTraining } from '@/lib/useSimTraining';
-import { fmtClock, fmtSec } from '@/lib/metrics';
 import * as db from '@/lib/db';
 import type { Material, Marker, Session } from '@/types';
 
@@ -79,6 +77,75 @@ function Runner({
     } else setSaving(false);
   };
 
+  const panels = useMemo<PanelSpec[]>(() => {
+    const list: PanelSpec[] = [
+      {
+        id: 'media',
+        title: '音视频 · 源语',
+        icon: <AudioLines className="h-3.5 w-3.5" />,
+        content: (
+          <MediaPanel
+            isVideo={material.kind === 'video'}
+            el={t.player.el}
+            peaks={material.peaks}
+            duration={material.duration}
+            trim={material.trim}
+            time={t.player.time}
+            elapsed={t.elapsed}
+            level={t.level}
+            recording={t.state === 'training'}
+            markers={markers.map((m) => ({
+              t: m.t + material.trim.start,
+              color: m.type === 'evs-short' ? '#0ea5e9' : '#6366f1',
+            }))}
+            extra={
+              <div className="mt-2 w-full max-w-sm px-4">
+                <EvsBar sourceT={t.player.time} duration={effDur} target={evsTarget} />
+              </div>
+            }
+          />
+        ),
+        minW: 280,
+        minH: 200,
+      },
+    ];
+    if (hasSlides) {
+      list.push({
+        id: 'slides',
+        title: `看屏材料${material.slidesFile ? ` · ${material.slidesFile}` : ''}`,
+        icon: <Layers className="h-3.5 w-3.5" />,
+        badge: `${Math.min(slideIndex + 1, material.slides!.length)} / ${material.slides!.length}`,
+        content: (
+          <SlideDeck
+            className="h-full p-2"
+            slides={material.slides!}
+            index={slideIndex}
+            onChange={setSlideIndex}
+            fontSize={fontSize}
+            lineHeight={1.7}
+            sourceKey={material.slidesBlobKey}
+            fileName={material.slidesFile}
+            allowFullscreen
+          />
+        ),
+        minW: 320,
+        minH: 220,
+      });
+    }
+    return list;
+  }, [hasSlides, material, slideIndex, fontSize, evsTarget, effDur, markers, t.player, t.elapsed, t.level, t.state]);
+
+  const defaults = useMemo(() => {
+    const out: Record<string, Rect> = {};
+    if (hasSlides) {
+      out.media = { x: 0, y: 0, w: 0.4, h: 1 };
+      out.slides = { x: 0.4, y: 0, w: 0.6, h: 1 };
+    } else {
+      out.media = { x: 0, y: 0, w: 1, h: 1 };
+    }
+    return out;
+  }, [hasSlides]);
+
   return (
     <TrainShell
       mode="sim-noscript"
@@ -101,14 +168,14 @@ function Runner({
           <button
             onClick={() => mark('evs-short')}
             disabled={t.state !== 'training'}
-            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+            className="h-8 rounded-md border px-2 text-[11px] text-muted-foreground hover:bg-accent disabled:opacity-40"
           >
             太紧 B
           </button>
           <button
             onClick={() => mark('evs-long')}
             disabled={t.state !== 'training'}
-            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+            className="h-8 rounded-md border px-2 text-[11px] text-muted-foreground hover:bg-accent disabled:opacity-40"
           >
             太松 N
           </button>
@@ -120,33 +187,40 @@ function Runner({
           <RailCard title="EVS 目标" desc="目标滞后时间，决定你跟读的安全距离">
             <div className="flex items-center gap-2">
               <Input
-                className="h-8 border-white/15 bg-white/5 text-xs text-slate-100"
+                className="h-8 text-xs"
                 type="number"
                 step={0.5}
                 value={evsTarget}
                 onChange={(e) => setEvsTarget(Math.max(0.5, Number(e.target.value)))}
               />
-              <span className="text-[11px] text-slate-400">秒</span>
+              <span className="text-[11px] text-muted-foreground">秒</span>
             </div>
             <div className="mt-2">
-              <EvsBar dark sourceT={t.player.time} duration={effDur} target={evsTarget} />
+              <EvsBar sourceT={t.player.time} duration={effDur} target={evsTarget} />
             </div>
           </RailCard>
 
           <RailCard title="看屏材料（可选）" desc="真实会议里译员能看到大屏；PPT 仅作参考，不影响无稿训练">
             <DocSlots
-              dark
               only="slides"
               slideCount={material.slides?.length}
               slidesFile={material.slidesFile}
               slidesSource={material.slidesSource}
               onSlides={async (doc, fileName) => {
-                if (!doc) return saveMaterial({ ...material, slides: undefined, slidesFile: undefined, slidesSource: undefined });
+                if (!doc)
+                  return saveMaterial({
+                    ...material,
+                    slides: undefined,
+                    slidesFile: undefined,
+                    slidesSource: undefined,
+                    slidesBlobKey: undefined,
+                  });
                 await saveMaterial({
                   ...material,
                   slides: doc.slides,
                   slidesFile: fileName,
                   slidesSource: doc.source,
+                  slidesBlobKey: doc.sourceKey,
                   docKind: 'slides',
                 });
                 setSlideIndex(0);
@@ -155,100 +229,22 @@ function Runner({
             />
             {hasSlides ? (
               <div className="mt-2">
-                <Label className="text-[11px] text-slate-400">字号 {fontSize}px</Label>
-                <input
-                  type="range"
-                  min={14}
-                  max={32}
-                  value={fontSize}
-                  onChange={(e) => setFontSize(Number(e.target.value))}
-                  className="w-full accent-sky-400"
-                />
+                <Label className="text-[11px] text-muted-foreground">文字版字号 {fontSize}px</Label>
+                <Slider value={[fontSize]} min={14} max={32} step={1} onValueChange={(v) => setFontSize(v[0])} />
               </div>
             ) : null}
           </RailCard>
 
           <RailCard title="训练参数">
             <RailSwitch label="干扰音" desc="低音量背景噪声" checked={noise} onChange={setNoise} />
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Timer className="h-3 w-3" /> 本轮标记 {markers.length} 个
             </div>
-          </RailCard>
-
-          <RailCard title="源语监控">
-            <Waveform
-              peaks={material.peaks}
-              duration={material.duration}
-              height={48}
-              color="#38bdf8"
-              cursor={t.player.time + material.trim.start}
-              highlight={{ start: material.trim.start, end: material.trim.end }}
-              markers={markers.map((m) => ({
-                t: m.t + material.trim.start,
-                color: m.type === 'evs-short' ? '#0ea5e9' : '#6366f1',
-              }))}
-            />
-            {t.state === 'training' ? (
-              <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2">
-                <LevelMeter wave={t.level.wave} level={t.level.rms} />
-              </div>
-            ) : null}
           </RailCard>
         </>
       }
     >
-      <div className="flex h-full min-h-0 flex-col gap-2">
-        {hasSlides ? (
-          <SlideDeck
-            className="min-h-0 flex-1"
-            slides={material.slides!}
-            index={slideIndex}
-            onChange={setSlideIndex}
-            fontSize={fontSize}
-            lineHeight={1.7}
-            allowFullscreen
-          />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 rounded-xl border border-white/10 bg-white/[0.02]">
-            <div className="text-center">
-              <div className="font-mono text-6xl font-semibold tabular-nums tracking-tight">
-                {fmtClock(t.player.time)}
-                <span className="ml-2 text-lg text-slate-500">/ {fmtSec(effDur)}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-500">
-                <Timer className="h-3.5 w-3.5" />
-                译语已录 {t.elapsed.toFixed(1)}s
-                {t.state === 'paused' ? ' · 已暂停（两轨同步）' : ''}
-              </div>
-            </div>
-            <div className="w-full max-w-xl px-6">
-              <EvsBar dark sourceT={t.player.time} duration={effDur} target={evsTarget} />
-            </div>
-            {t.state === 'training' ? (
-              <div className="w-full max-w-md px-6">
-                <LevelMeter wave={t.level.wave} level={t.level.rms} />
-              </div>
-            ) : null}
-            {!hasSlides ? (
-              <p className="max-w-sm px-6 text-center text-[11px] text-slate-600">
-                无稿同传刻意不提供文字材料。若需要看屏，可在右侧上传 PPT/PDF 作为背景参考。
-              </p>
-            ) : null}
-          </div>
-        )}
-
-        {material.kind === 'video' ? (
-          <VideoStage el={t.player.el} className="max-h-[30vh] shrink-0 rounded-lg" />
-        ) : null}
-
-        {markers.length ? (
-          <div className="flex shrink-0 items-center justify-end gap-1.5">
-            <Badge variant="secondary" className="bg-white/10 text-[10px] text-slate-300">
-              本轮 {markers.length} 个 EVS 标记
-            </Badge>
-          </div>
-        ) : null}
-      </div>
+      <PanelBoard mode="sim-noscript" panels={panels} defaults={defaults} />
     </TrainShell>
   );
 }

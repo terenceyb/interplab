@@ -14,7 +14,6 @@ interface Props {
   blockCount?: number;
   onSlides: (doc: ParsedDoc | null, fileName?: string) => void | Promise<void>;
   onScript: (doc: ParsedDoc | null, fileName?: string) => void | Promise<void>;
-  dark?: boolean;
   /** 只显示某一类入口：无稿同传只需幻灯片 */
   only?: 'both' | 'slides' | 'script';
   /** 宽容器时两个入口并排（默认竖排，适配窄侧栏） */
@@ -41,7 +40,6 @@ export function DocSlots({
   blockCount = 0,
   onSlides,
   onScript,
-  dark = false,
   only = 'both',
   wide = false,
   removable = true,
@@ -82,21 +80,18 @@ export function DocSlots({
           }${warn}`,
         });
       }
-    } catch (e: any) {
-      setMsg({ ok: false, text: String(e?.message || e) });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
   };
 
-  const card = dark
-    ? 'rounded-lg border border-white/10 bg-white/[0.03] p-3'
-    : 'rounded-lg border bg-card p-3';
-  const titleCls = dark ? 'text-xs font-medium text-slate-200' : 'text-xs font-medium';
-  const descCls = dark ? 'text-[11px] text-slate-500' : 'text-[11px] text-muted-foreground';
-  const btnCls = dark
-    ? 'flex h-8 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-[11px] text-slate-200 transition-colors hover:bg-white/10 disabled:opacity-50'
-    : 'flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[11px] transition-colors hover:bg-muted disabled:opacity-50';
+  const card = 'rounded-lg border bg-card p-3';
+  const titleCls = 'text-xs font-medium';
+  const descCls = 'text-[11px] text-muted-foreground';
+  const btnCls =
+    'flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[11px] transition-colors hover:bg-accent disabled:opacity-50';
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -104,7 +99,7 @@ export function DocSlots({
         {/* 幻灯片入口 */}
         {only !== 'script' ? <div className={card}>
           <div className="flex items-start gap-2">
-            <Presentation className={cn('mt-0.5 h-4 w-4 shrink-0', dark ? 'text-sky-400' : 'text-primary')} />
+            <Presentation className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
               <div className={titleCls}>PPT / PDF 幻灯片</div>
               <div className={descCls}>
@@ -148,7 +143,7 @@ export function DocSlots({
         {/* 稿件入口 */}
         {only !== 'slides' ? <div className={card}>
           <div className="flex items-start gap-2">
-            <FileText className={cn('mt-0.5 h-4 w-4 shrink-0', dark ? 'text-amber-400' : 'text-amber-600')} />
+            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="min-w-0 flex-1">
               <div className={titleCls}>讲话稿 / 字幕</div>
               <div className={descCls}>
@@ -195,12 +190,8 @@ export function DocSlots({
           className={cn(
             'flex items-start gap-2 rounded-md border p-2 text-[11px]',
             msg.ok
-              ? dark
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                : 'border-emerald-500/30 bg-emerald-500/10'
-              : dark
-                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                : 'border-amber-500/30 bg-amber-500/10',
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
           )}
         >
           <span className="flex-1">{msg.text}</span>

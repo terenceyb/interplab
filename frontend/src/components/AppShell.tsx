@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/useApp';
 import { ResourceMonitor } from '@/components/ResourceMonitor';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const NAV = [
   { to: '/', label: '工作台', icon: LayoutDashboard, end: true },
@@ -63,7 +64,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t p-3">
+        <div className="space-y-2 border-t p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-muted-foreground">配色</span>
+            <ThemeToggle className="w-[112px]" />
+          </div>
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium">
               {profile.name.slice(0, 1)}

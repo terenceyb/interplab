@@ -106,6 +106,11 @@ export interface Material {
   /** 幻灯片来源文件名与类型，用于界面展示 */
   slidesFile?: string;
   slidesSource?: string;
+  /**
+   * 原始幻灯片文件在 IndexedDB 的 key。
+   * 有它就能按「原版式」渲染（PDF 画 canvas、PPTX 还原版式），否则只能用文字版。
+   */
+  slidesBlobKey?: string;
   /** 稿件块结构（保留标题/段落/列表） */
   blocks?: DocBlock[];
   /** 稿件来源文件名 */

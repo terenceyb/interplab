@@ -20,8 +20,6 @@ interface Props {
   follow?: boolean;
   /** 段落块结构：还原标题 / 段落 / 列表 / 引用，保留原文换行 */
   blocks?: DocBlock[];
-  /** 深色（训练态）配色 */
-  dark?: boolean;
   onSentenceClick?: (i: number) => void;
   className?: string;
 }
@@ -44,7 +42,6 @@ export function ScriptView({
   hide = false,
   follow = true,
   blocks,
-  dark = false,
   onSentenceClick,
   className,
 }: Props) {
@@ -83,12 +80,7 @@ export function ScriptView({
 
   if (hide) {
     return (
-      <div
-        className={cn(
-          'flex h-full min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed',
-          dark ? 'border-white/15 bg-slate-900/60 text-slate-400' : 'text-muted-foreground',
-        )}
-      >
+      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed text-muted-foreground">
         <p className="text-sm font-medium">稿件已隐藏 · 纯听状态</p>
         <p className="mt-1 text-xs opacity-70">按 H 或右上角开关恢复 · 模拟无稿实战</p>
       </div>
@@ -98,10 +90,7 @@ export function ScriptView({
   const renderText = (text: string, masked: boolean) => {
     if (masked) {
       return (
-        <span
-          className={cn('rounded px-1', dark ? 'bg-white/15 text-transparent' : 'bg-muted text-transparent')}
-          title="遮挡训练"
-        >
+        <span className="rounded bg-muted px-1 text-transparent" title="遮挡训练">
           {'█'.repeat(Math.min(12, Math.max(2, Math.round(text.replace(/\s/g, '').length / 2))))}
         </span>
       );
@@ -112,12 +101,7 @@ export function ScriptView({
       termRe.test(p) ? (
         <span
           key={i}
-          className={cn(
-            'rounded-sm px-0.5 font-medium',
-            dark
-              ? 'bg-amber-300/20 text-amber-200 decoration-amber-400/70 underline decoration-2 underline-offset-2'
-              : 'bg-amber-100 text-amber-900 decoration-amber-400 underline decoration-2 underline-offset-2',
-          )}
+          className="rounded-sm bg-amber-100 px-0.5 font-medium text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2 dark:bg-amber-300/20 dark:text-amber-200 dark:decoration-amber-400/70"
         >
           {p}
         </span>
@@ -138,8 +122,8 @@ export function ScriptView({
         onClick={() => onSentenceClick?.(gi)}
         className={cn(
           'cursor-pointer rounded px-0.5 transition-colors',
-          state === 'current' && (dark ? 'bg-amber-300/15 text-white' : 'bg-primary/20 font-medium'),
-          state === 'read' && (dark ? 'text-slate-500' : 'text-muted-foreground/60'),
+          state === 'current' && 'bg-amber-200/60 font-medium dark:bg-amber-300/15',
+          state === 'read' && 'text-muted-foreground/60',
         )}
       >
         {pieces.map((p, j) => (
@@ -153,11 +137,7 @@ export function ScriptView({
   return (
     <div
       ref={boxRef}
-      className={cn(
-        'h-full overflow-y-auto rounded-lg border px-5 py-4',
-        dark ? 'border-white/10 bg-slate-900/55 text-slate-100' : 'bg-card',
-        className,
-      )}
+      className={cn('h-full overflow-y-auto rounded-lg border bg-card px-5 py-4', className)}
       style={{ fontSize, lineHeight }}
     >
       {groups.map((g, gidx) => {
@@ -170,7 +150,6 @@ export function ScriptView({
               key={gidx}
               className={cn(
                 'mb-2 mt-4 border-b pb-1 font-semibold first:mt-0',
-                dark ? 'border-white/10 text-white' : 'border-border',
                 lv <= 1 ? 'text-[1.15em]' : 'text-[1.05em]',
               )}
             >
@@ -181,20 +160,14 @@ export function ScriptView({
         if (type === 'li') {
           return (
             <div key={gidx} className="mb-1.5 flex gap-2">
-              <span className={cn('mt-[0.75em] h-1.5 w-1.5 shrink-0 rounded-full', dark ? 'bg-sky-400' : 'bg-primary')} />
+              <span className="mt-[0.75em] h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span className="min-w-0 flex-1">{body}</span>
             </div>
           );
         }
         if (type === 'quote') {
           return (
-            <blockquote
-              key={gidx}
-              className={cn(
-                'mb-2 border-l-2 pl-3',
-                dark ? 'border-amber-400/60 text-slate-300' : 'border-amber-400 text-muted-foreground',
-              )}
-            >
+            <blockquote key={gidx} className="mb-2 border-l-2 border-amber-400 pl-3 text-muted-foreground">
               {body}
             </blockquote>
           );
@@ -215,19 +188,17 @@ export function EvsBar({
   sourceT,
   duration,
   target,
-  dark = false,
 }: {
   sourceT: number;
   duration: number;
   target: number;
-  dark?: boolean;
 }) {
   const pct = duration > 0 ? (sourceT / duration) * 100 : 0;
   const lagT = Math.max(0, sourceT - target);
   const lagPct = duration > 0 ? (lagT / duration) * 100 : 0;
   return (
     <div className="space-y-1">
-      <div className={cn('relative h-2 w-full rounded-full', dark ? 'bg-white/10' : 'bg-muted')}>
+      <div className="relative h-2 w-full rounded-full bg-muted">
         <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/70" style={{ width: `${pct}%` }} />
         <div
           className="absolute -top-1 h-4 w-1 rounded bg-amber-400"
@@ -235,9 +206,11 @@ export function EvsBar({
           title={`目标滞后 ${target}s：此刻应正在译该位置`}
         />
       </div>
-      <div className={cn('flex justify-between text-[11px]', dark ? 'text-slate-400' : 'text-muted-foreground')}>
+      <div className="flex justify-between text-[11px] text-muted-foreground">
         <span>源语进度 {sourceT.toFixed(1)}s</span>
-        <span className="text-amber-500">目标 EVS {target}s · 应译至 {lagT.toFixed(1)}s</span>
+        <span className="text-amber-600 dark:text-amber-400">
+          目标 EVS {target}s · 应译至 {lagT.toFixed(1)}s
+        </span>
       </div>
     </div>
   );

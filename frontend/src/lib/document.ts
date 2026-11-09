@@ -28,6 +28,12 @@ export interface ParsedDoc {
   ext: string;
   /** 解析来源，用于界面提示 */
   source: string;
+  /**
+   * 原始文件的 IndexedDB key。
+   * 训练页据此按「原版式」重新渲染（PPT 走 OOXML 场景、PDF 走 canvas），
+   * 而不是只能看提取出来的纯文字。
+   */
+  sourceKey?: string;
   /** 解析过程中的降级/提示信息 */
   warnings?: string[];
 }
@@ -524,6 +530,8 @@ async function parsePptx(file: Blob, ext: string, warnings: string[]): Promise<P
   const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const order = await slideOrder(zip);
+  /** 原文件留档：训练页要用它做原版式渲染 */
+  const sourceKey = await putAudio(file, `src-${uid()}`);
 
   const slides: SlideData[] = [];
   /** 图片字节预算：超出后不再内联，避免素材库膨胀 */
@@ -597,7 +605,7 @@ async function parsePptx(file: Blob, ext: string, warnings: string[]): Promise<P
     .map((s) => [s.title, ...s.bullets].filter(Boolean).join('\n'))
     .join('\n\n')
     .trim();
-  return { kind: 'slides', text, slides, ext, source: 'PowerPoint', encoding: 'OOXML', warnings };
+  return { kind: 'slides', text, slides, ext, source: 'PowerPoint', encoding: 'OOXML', warnings, sourceKey };
 }
 
 /** 幻灯片图片在 IndexedDB 中的引用前缀 */
@@ -987,7 +995,7 @@ async function parsePpt(file: Blob, ext: string, warnings: string[]): Promise<Pa
 let pdfjsReady: Promise<any> | null = null;
 
 /** 按需加载 pdf.js（legacy 构建，兼容更老的浏览器） */
-async function loadPdfjs() {
+export async function loadPdfjs() {
   if (!pdfjsReady) {
     pdfjsReady = (async () => {
       const lib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -1031,6 +1039,7 @@ function pdfItemsToLines(items: any[]): string[] {
 
 async function parsePdf(file: Blob, warnings: string[]): Promise<ParsedDoc> {
   const lib = await loadPdfjs();
+  const sourceKey = await putAudio(file, `src-${uid()}`);
   const data = new Uint8Array(await file.arrayBuffer());
   const base = (import.meta.env.BASE_URL || './').replace(/\/$/, '');
   const task = lib.getDocument({
@@ -1064,17 +1073,17 @@ async function parsePdf(file: Blob, warnings: string[]): Promise<ParsedDoc> {
   await pdf.destroy?.();
 
   if (emptyPages === slides.length) {
-    throw new Error(
-      '这份 PDF 没有可提取的文字（可能是扫描件或纯图片版式）。建议先用 OCR 转成文字稿，或改用 PPT / Word 稿件。',
-    );
+    // 扫描件没有文字层也能看：训练页会按原版式渲染 canvas，只是无法做关键词检索
+    warnings.push('整份 PDF 没有文字层（扫描件或图片版式），将按原版画面呈现');
+  } else if (emptyPages) {
+    warnings.push(`${emptyPages} 页没有可提取文字（可能是图片页），按原画面呈现`);
   }
-  if (emptyPages) warnings.push(`${emptyPages} 页没有可提取文字（可能是图片页）`);
 
   const text = slides
     .map((s) => [s.title, ...s.bullets].filter(Boolean).join('\n'))
     .join('\n\n')
     .trim();
-  return { kind: 'slides', text, slides, ext: 'pdf', source: 'PDF', encoding: 'PDF', warnings };
+  return { kind: 'slides', text, slides, ext: 'pdf', source: 'PDF', encoding: 'PDF', warnings, sourceKey };
 }
 
 /* ------------------------------------------------------------------ */
