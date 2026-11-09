@@ -27,7 +27,7 @@ export async function decodeBlob(blob: Blob): Promise<AudioBuffer> {
 }
 
 /** 计算波形峰值（归一化 0-1），采样密度 40 桶/秒，上限 6000 */
-export function computePeaks(buffer: AudioBuffer, density = 40, maxBuckets = 6000): number[] {
+export function computePeaks(buffer: AudioBuffer, density = 40, maxBuckets = 2400): number[] {
   const ch = buffer.getChannelData(0);
   const total = Math.min(Math.max(1, Math.floor(buffer.duration * density)), maxBuckets);
   const step = ch.length / total;
@@ -508,7 +508,7 @@ export class Recorder {
     try {
       const buf = await decodeBlob(blob);
       duration = buf.duration || dur;
-      peaks = computePeaks(buf, 40, 4000);
+      peaks = computePeaks(buf, 40, 1200);
     } catch {
       /* 编解码失败时用计时值兜底 */
     }
@@ -531,6 +531,25 @@ export const micAvailable = () =>
   typeof navigator !== 'undefined' &&
   !!navigator.mediaDevices?.getUserMedia &&
   typeof MediaRecorder !== 'undefined';
+
+/** 读取媒体时长（音轨无法解码时的兜底，视频尤其常用） */
+export function probeMediaDuration(blob: Blob): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const isVideo = /^video\//i.test(blob.type);
+    const el: HTMLMediaElement = isVideo ? document.createElement('video') : document.createElement('audio');
+    el.preload = 'metadata';
+    el.src = url;
+    const done = (d: number) => {
+      URL.revokeObjectURL(url);
+      el.src = '';
+      resolve(Number.isFinite(d) ? d : 0);
+    };
+    el.onloadedmetadata = () => done(el.duration);
+    el.onerror = () => done(0);
+    setTimeout(() => done(el.duration), 8000);
+  });
+}
 
 /** 生成 1 秒静音 WAV，用于录音权限自检或占位 */
 export function makeSilentWav(seconds = 1, sampleRate = 16000): Blob {

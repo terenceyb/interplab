@@ -80,6 +80,11 @@ export function useSourcePlayer(
 /** VAD 结果缓存（避免每次进训练都重算） */
 const vaCache = new Map<string, VoiceActivityLike>();
 
+export const vaCacheSize = () => vaCache.size;
+export function clearVACache() {
+  vaCache.clear();
+}
+
 export async function getVA(material: Material): Promise<VoiceActivityLike> {
   const hit = vaCache.get(material.audioKey);
   if (hit) return hit;

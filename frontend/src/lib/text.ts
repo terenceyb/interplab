@@ -1,4 +1,4 @@
-import type { Sentence } from '@/types';
+import type { DocBlock, Sentence } from '@/types';
 import type { VoiceActivity } from './vad';
 
 /** 句子切分：兼容中英标点 */
@@ -92,12 +92,14 @@ export function tokens(s: string): string[] {
  * 稿件与音频对齐：
  * - 有字幕时间码 → 直接映射（高置信）
  * - 仅纯文本 → 按字符权重在语音段上均匀分配（低-中置信，需手动校准）
+ * - 传入 blocks 时逐块切句，句子保留 block 下标，界面才能还原段落换行
  */
 export function alignScript(
   scriptText: string,
   duration: number,
   va?: VoiceActivity,
   offset = 0,
+  blocks?: DocBlock[],
 ): Sentence[] {
   const cues = hasTimecodes(scriptText) ? parseSubtitle(scriptText) : [];
   if (cues.length) {
@@ -108,24 +110,35 @@ export function alignScript(
       start: Math.max(0, c.start - offset),
       end: Math.max(0, c.end - offset),
       confidence: 0.95,
+      block: i,
     }));
   }
-  const sents = splitSentences(scriptText);
-  if (!sents.length) return [];
-  const weights = sents.map((s) => Math.max(1, s.replace(/\s/g, '').length));
+
+  const items: { text: string; block: number }[] = [];
+  if (blocks?.length) {
+    blocks.forEach((b, bi) => {
+      for (const t of splitSentences(b.text)) items.push({ text: t, block: bi });
+    });
+  } else {
+    for (const t of splitSentences(scriptText)) items.push({ text: t, block: 0 });
+  }
+  if (!items.length) return [];
+
+  const weights = items.map((it) => Math.max(1, it.text.replace(/\s/g, '').length));
   const total = weights.reduce((a, b) => a + b, 0);
   const voiced = va?.voiced && va.voiced > duration * 0.3 ? va.voiced : duration;
   const out: Sentence[] = [];
   let cursor = va?.voices?.[0]?.start ?? 0;
-  sents.forEach((text, i) => {
+  items.forEach((it, i) => {
     const len = (weights[i] / total) * voiced;
     out.push({
       id: `s${i}`,
       index: i,
-      text,
+      text: it.text,
       start: cursor,
       end: cursor + len,
       confidence: 0.35,
+      block: it.block,
     });
     cursor += len;
   });

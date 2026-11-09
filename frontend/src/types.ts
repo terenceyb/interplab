@@ -45,14 +45,28 @@ export const MARKER_TYPES: MarkerTypeDef[] = [
 
 export const MARKER_MAP = Object.fromEntries(MARKER_TYPES.map((m) => [m.key, m])) as Record<string, MarkerTypeDef>;
 
-/** 一页幻灯片（从 .pptx 解析） */
+/** 一页幻灯片（从 .pptx / .ppt / .pdf / .odp 解析） */
 export interface SlideData {
   index: number;
   title?: string;
   bullets: string[];
   notes?: string;
-  /** 页内图片（dataURL），可能为空 */
+  /**
+   * 页内图片。
+   * 新数据为 `img:<key>`（指向 IndexedDB），历史数据可能是 data: URL；
+   * 统一用 SlideImage 组件解析，避免大图 base64 常驻内存。
+   */
   images: string[];
+  /** PDF 的原始页码（从 1 开始） */
+  page?: number;
+}
+
+/** 稿件块：保留标题 / 段落 / 列表的结构，带稿同传才能还原原文换行 */
+export interface DocBlock {
+  type: 'title' | 'heading' | 'para' | 'li' | 'quote';
+  text: string;
+  /** 标题层级 1-4 */
+  level?: number;
 }
 
 /** 源语语言 */
@@ -87,8 +101,15 @@ export interface Material {
   script?: string;
   /** 稿件形态：纯文本 或 PPT 幻灯片 */
   docKind?: 'text' | 'slides';
-  /** PPT 幻灯片数据（docKind==='slides' 时存在） */
+  /** 幻灯片数据（PPT / PDF / ODP），与文本稿件可以并存 */
   slides?: SlideData[];
+  /** 幻灯片来源文件名与类型，用于界面展示 */
+  slidesFile?: string;
+  slidesSource?: string;
+  /** 稿件块结构（保留标题/段落/列表） */
+  blocks?: DocBlock[];
+  /** 稿件来源文件名 */
+  scriptFile?: string;
   /** 导入稿件时识别到的编码（用于排查乱码） */
   scriptEncoding?: string;
   /** 句子与音频时间的对齐锚点 */
@@ -103,6 +124,8 @@ export interface Sentence {
   start: number;
   end: number;
   confidence: number; // 0-1，低置信需手动校准
+  /** 所属稿件块下标（用于还原段落/换行结构） */
+  block?: number;
 }
 
 /** 分段（交传智能分段结果） */

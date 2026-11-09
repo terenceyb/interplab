@@ -136,6 +136,14 @@ export const fmtSec = (s: number) => {
   return `${m}:${String(r).padStart(2, '0')}`;
 };
 
+/** 训练计时器用：始终两位分钟（00:07），避免大字排版跳动 */
+export const fmtClock = (s: number) => {
+  const safe = Math.max(0, Math.floor(s));
+  const m = Math.floor(safe / 60);
+  const r = safe % 60;
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+};
+
 export const fmtSecPrecise = (s: number) => {
   const m = Math.floor(s / 60);
   const r = (s % 60).toFixed(1);

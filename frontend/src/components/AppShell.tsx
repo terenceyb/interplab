@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/useApp';
+import { ResourceMonitor } from '@/components/ResourceMonitor';
 
 const NAV = [
   { to: '/', label: '工作台', icon: LayoutDashboard, end: true },
@@ -27,6 +28,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
   const profile = useApp((s) => s.profile);
   const ready = useApp((s) => s.ready);
+  /** 训练页是全屏沉浸式界面，隐藏侧栏把空间让给稿件 */
+  const immersive = /^\/train\//.test(loc.pathname);
+
+  if (immersive && ready) return <>{children}</>;
 
   return (
     <div className="flex min-h-screen bg-muted/30">
@@ -81,6 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </main>
+      <ResourceMonitor />
     </div>
   );
 }

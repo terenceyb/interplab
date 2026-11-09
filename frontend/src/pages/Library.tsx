@@ -10,12 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PageHeader, Empty, Stat } from '@/components/PageHeader';
 import { useApp } from '@/store/useApp';
 import * as db from '@/lib/db';
-import { decodeFile, detectSilenceEdges, computePeaks } from '@/lib/audio';
+import { decodeFile, detectSilenceEdges, computePeaks, probeMediaDuration } from '@/lib/audio';
 import { estimateRate } from '@/lib/vad';
 import type { Material } from '@/types';
 import { fmtSec } from '@/lib/metrics';
-import { CloudDownload } from 'lucide-react';
+import { CloudDownload, Package as PackageIcon, Presentation, FileText } from 'lucide-react';
 import { CloudImportDialog } from '@/components/CloudImportDialog';
+import { PackageDialog } from '@/components/PackageDialog';
 import { LANGUAGES, langLabel, langShort } from '@/lib/languages';
 import type { MaterialLanguage } from '@/types';
 
@@ -23,23 +24,6 @@ const DIFF_LABEL: Record<string, string> = { easy: '入门', medium: '进阶', h
 
 const VIDEO_EXT = /\.(mp4|mov|m4v|webm|mkv|avi)$/i;
 const isVideoFile = (f: File) => f.type.startsWith('video/') || VIDEO_EXT.test(f.name);
-
-/** 读取视频时长（音轨不可解码时的兜底） */
-function probeVideoDuration(file: File): Promise<number> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const v = document.createElement('video');
-    v.preload = 'metadata';
-    v.src = url;
-    const done = (d: number) => {
-      URL.revokeObjectURL(url);
-      resolve(d);
-    };
-    v.onloadedmetadata = () => done(Number.isFinite(v.duration) ? v.duration : 0);
-    v.onerror = () => done(0);
-    setTimeout(() => done(Number.isFinite(v.duration) ? v.duration : 0), 8000);
-  });
-}
 
 export default function Library() {
   const { materials, saveMaterial, removeMaterial, sessions } = useApp();
@@ -50,6 +34,7 @@ export default function Library() {
   const [status, setStatus] = useState('');
   const [drag, setDrag] = useState(false);
   const [cloudOpen, setCloudOpen] = useState(false);
+  const [pkgOpen, setPkgOpen] = useState(false);
   const [langFilter, setLangFilter] = useState<'all' | MaterialLanguage | 'none'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
@@ -130,7 +115,7 @@ export default function Library() {
         } catch {
           if (!video) throw new Error('decode-failed');
           // 视频音轨无法解码：用视频时长兜底，波形留空（分段退化为等时长）
-          duration = await probeVideoDuration(f);
+          duration = await probeMediaDuration(f);
           noWaveform = true;
           trim = { start: 0, end: duration };
           if (!duration) throw new Error('no-duration');
@@ -180,6 +165,7 @@ export default function Library() {
         onOpenChange={setCloudOpen}
         onFiles={(files, label) => ingest(files, label)}
       />
+      <PackageDialog open={pkgOpen} onOpenChange={setPkgOpen} />
       <PageHeader
         title="个人素材库"
         desc="上传训练用源语音频。所有素材默认仅本人可见，保存在本机浏览器，不上传云端。"
@@ -190,6 +176,9 @@ export default function Library() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => setCloudOpen(true)}>
               <CloudDownload className="mr-1 h-3.5 w-3.5" /> 外部导入
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPkgOpen(true)}>
+              <PackageIcon className="mr-1 h-3.5 w-3.5" /> 数据包
             </Button>
             <Button size="sm" onClick={() => fileRef.current?.click()}>
               <Upload className="mr-1 h-3.5 w-3.5" /> 上传音频 / 视频
@@ -305,6 +294,24 @@ export default function Library() {
                       {m.language ? langShort(m.language) : '未标注'}
                     </Badge>
                     <span>·</span>
+                    {m.slides?.length ? (
+                      <>
+                        <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                          <Presentation className="mr-0.5 h-2.5 w-2.5" />
+                          {m.slides.length} 页
+                        </Badge>
+                        <span>·</span>
+                      </>
+                    ) : null}
+                    {m.sentences.length ? (
+                      <>
+                        <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                          <FileText className="mr-0.5 h-2.5 w-2.5" />
+                          稿件
+                        </Badge>
+                        <span>·</span>
+                      </>
+                    ) : null}
                     {m.kind === 'video' ? (
                       <>
                         <Badge variant="outline" className="px-1 py-0 text-[10px]">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BookMarked,
@@ -12,7 +12,6 @@ import {
   Sparkles,
   Star,
   Trash2,
-  Upload,
   Waves,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,9 @@ import { useApp } from '@/store/useApp';
 import { useAudioUrl, useSourcePlayer, getVA } from '@/lib/hooks';
 import { clipActivity, mergeAt, smartSegment, splitSegment, estimateRate } from '@/lib/vad';
 import { alignScript, calibrateSentence, extractCandidates, hasTimecodes } from '@/lib/text';
-import { parseScriptFile, SCRIPT_ACCEPT, legacyHint } from '@/lib/document';
+import { textToBlocks, type ParsedDoc } from '@/lib/document';
+import { buildScriptPatch } from '@/lib/scriptAttach';
+import { DocSlots } from '@/components/train/DocSlots';
 import { LANGUAGES } from '@/lib/languages';
 import type { SlideData } from '@/types';
 import { fmtSec } from '@/lib/metrics';
@@ -95,9 +96,6 @@ function Detail({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [libId, setLibId] = useState(libs[0]?.id || '');
   const [calibIndex, setCalibIndex] = useState<number | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [docBusy, setDocBusy] = useState(false);
-  const [docMsg, setDocMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [slides, setSlides] = useState<SlideData[] | undefined>(m.slides);
 
   const update = async (patch: Partial<Material>) => {
@@ -144,12 +142,15 @@ function Detail({
     if (!text) return;
     const va = await getVA(m).catch(() => undefined);
     const clipped = va ? clipActivity(va, m.trim.start, m.trim.end) : undefined;
-    const sents = alignScript(text, effDur, clipped, m.trim.start);
+    // 手工粘贴的文本同样切成块，保留段落换行
+    const blocks = m.blocks?.length ? m.blocks : textToBlocks(text);
+    const sents = alignScript(text, effDur, clipped, m.trim.start, blocks);
     const rate = estimateRate(sents.map((s) => s.text).join(' '), effDur);
     const avgLen = sents.length ? sents.reduce((s, x) => s + x.text.length, 0) / sents.length : 0;
     const density: 1 | 2 | 3 = avgLen > 45 ? 3 : avgLen > 22 ? 2 : 1;
     await update({
       script: text,
+      blocks,
       sentences: sents,
       wpm: rate.wpm,
       density,
@@ -165,6 +166,28 @@ function Detail({
   };
 
   const lowConf = m.sentences.filter((s) => s.confidence < 0.6).length;
+
+  /** 幻灯片上传（PPT / PDF / ODP） */
+  const handleSlides = async (doc: ParsedDoc | null, fileName?: string) => {
+    if (!doc) {
+      setSlides(undefined);
+      await update({ slides: undefined, slidesFile: undefined, slidesSource: undefined, docKind: 'text' });
+      return;
+    }
+    setSlides(doc.slides);
+    await update({ slides: doc.slides, slidesSource: doc.source, slidesFile: fileName, docKind: 'slides' });
+  };
+
+  /** 稿件上传（Word / 文本 / 字幕） */
+  const handleScript = async (doc: ParsedDoc | null, fileName?: string) => {
+    if (!doc) {
+      setScriptDraft('');
+      await update({ script: undefined, blocks: undefined, sentences: [], scriptFile: undefined });
+      return;
+    }
+    setScriptDraft(doc.text);
+    await update(await buildScriptPatch(m, doc, fileName));
+  };
 
   /* 术语候选 */
   const extract = () => {
@@ -595,92 +618,47 @@ function Detail({
           </Section>
 
           <Section
-            title="文本稿件 / 字幕"
-            desc="支持 TXT / MD / SRT / VTT / Word(.docx) / PPT(.pptx)；文本自动识别编码，PPT 以幻灯片形式手动翻页。"
-            actions={
-              <>
-                <Button size="sm" variant="ghost" disabled={docBusy} onClick={() => fileRef.current?.click()}>
-                  <Upload className={`mr-1 h-3.5 w-3.5 ${docBusy ? 'animate-pulse' : ''}`} />
-                  {docBusy ? '解析中…' : '导入文件'}
-                </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept={SCRIPT_ACCEPT}
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = '';
-                    if (!f) return;
-                    const hint = legacyHint(f.name);
-                    if (hint) {
-                      setDocMsg({ ok: false, text: hint });
-                      return;
-                    }
-                    setDocBusy(true);
-                    setDocMsg(null);
-                    try {
-                      const doc = await parseScriptFile(f);
-                      setScriptDraft(doc.text);
-                      if (doc.kind === 'slides' && doc.slides?.length) {
-                        setSlides(doc.slides);
-                        setDocMsg({
-                          ok: true,
-                          text: `已解析 ${doc.slides.length} 页幻灯片（${f.name}）。带稿同传中将以幻灯片形式手动翻页。`,
-                        });
-                      } else {
-                        setSlides(undefined);
-                        setDocMsg({
-                          ok: true,
-                          text: `已读取 ${f.name}（编码：${doc.encoding || '未知'}）${hasTimecodes(doc.text) ? ' · 含时间码，可跟随音视频' : ''}`,
-                        });
-                      }
-                    } catch (err: any) {
-                      setDocMsg({ ok: false, text: String(err?.message || err) });
-                    } finally {
-                      setDocBusy(false);
-                    }
-                  }}
-                />
-              </>
-            }
+            title="幻灯片材料（PPT / PDF）"
+            desc="按页呈现，训练时手动翻页；带稿同传与无稿同传都可以挂。"
           >
-            {docMsg ? (
-              <div
-                className={`mb-2 flex items-start gap-2 rounded-md border p-2 text-xs ${
-                  docMsg.ok ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-amber-500/30 bg-amber-500/10'
-                }`}
-              >
-                <span className="flex-1">{docMsg.text}</span>
-                <button className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setDocMsg(null)}>
-                  ×
-                </button>
-              </div>
+            <DocSlots
+              only="slides"
+              slideCount={slides?.length}
+              slidesFile={m.slidesFile}
+              slidesSource={m.slidesSource}
+              onSlides={handleSlides}
+              onScript={handleScript}
+            />
+            {m.slides?.length ? (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                当前共 {m.slides.length} 页：{[m.slides[0]?.title, m.slides[1]?.title].filter(Boolean).join(' / ') || '（无标题）'}
+                {m.slides.length > 2 ? ' …' : ''} · 训练页可全屏看屏
+              </p>
             ) : null}
-            {slides?.length ? (
-              <div className="mb-2 flex items-center gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 p-2 text-xs">
-                <span className="flex-1">
-                  已载入 <b>{slides.length}</b> 页幻灯片：{[slides[0]?.title, slides[1]?.title].filter(Boolean).join(' / ') || '（无标题）'}
-                  {slides.length > 2 ? ' …' : ''}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-xs"
-                  onClick={() => {
-                    setSlides(undefined);
-                    void update({ slides: undefined, docKind: 'text' });
-                  }}
-                >
-                  移除幻灯片
-                </Button>
-              </div>
-            ) : null}
+          </Section>
+
+          <Section
+            title="讲话稿 / 字幕"
+            desc="支持 Word(.docx)、TXT/MD、SRT/VTT、RTF；自动识别 GBK 等编码，保留标题与段落换行。"
+          >
+            <DocSlots
+              only="script"
+              scriptFile={m.scriptFile}
+              sentenceCount={m.sentences.length}
+              blockCount={m.blocks?.length ?? 0}
+              onSlides={handleSlides}
+              onScript={handleScript}
+              className="mb-2"
+            />
             <Textarea
-              className="min-h-[120px] text-xs"
+              className="min-h-[140px] text-xs"
               placeholder="粘贴讲话稿或字幕内容…（含 00:00:01,000 --> 00:00:04,000 时间码时自动按时间码对齐）"
               value={scriptDraft}
-              onChange={(e) => setScriptDraft(e.target.value)}
+              onChange={(e) => {
+                setScriptDraft(e.target.value);
+                // 手工编辑后旧的块结构失效，重新切块
+                if (m.blocks?.length) void update({ blocks: undefined });
+              }}
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={doAlign} disabled={!scriptDraft.trim()}>
@@ -700,42 +678,57 @@ function Detail({
                   已对齐 {m.sentences.length} 句{lowConf ? ` · ${lowConf} 句低置信` : ''}
                 </span>
               ) : null}
+              {m.scriptEncoding ? (
+                <Badge variant="outline" className="text-[10px]">
+                  编码 {m.scriptEncoding}
+                </Badge>
+              ) : null}
             </div>
 
             {m.sentences.length ? (
-              <div className="mt-3 max-h-64 space-y-1 overflow-y-auto pr-1">
-                {m.sentences.map((s) => (
-                  <div
-                    key={s.id}
-                    className={`flex items-start gap-2 rounded-md border px-2 py-1 text-xs ${
-                      calibIndex === s.index ? 'border-primary bg-primary/5' : ''
-                    }`}
-                  >
-                    <button
-                      className="w-20 shrink-0 text-left tabular-nums text-muted-foreground hover:text-foreground"
-                      onClick={() => player.play(s.start, Math.min(s.end, effDur))}
-                      title="点击试听该句"
-                    >
-                      {fmtSec(s.start)}–{fmtSec(s.end)}
-                    </button>
-                    <span className="min-w-0 flex-1">{s.text}</span>
-                    <Badge
-                      variant={s.confidence > 0.7 ? 'secondary' : 'outline'}
-                      className={`shrink-0 text-[10px] ${s.confidence < 0.6 ? 'text-amber-600' : ''}`}
-                    >
-                      {Math.round(s.confidence * 100)}%
-                    </Badge>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6 shrink-0"
-                      title="以当前播放位置校准该句起点"
-                      onClick={() => doCalibrate(s.index)}
-                    >
-                      <Check className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+              <div className="mt-3 max-h-72 space-y-1 overflow-y-auto pr-1">
+                {m.sentences.map((s, i) => {
+                  const block = m.blocks?.[s.block ?? 0];
+                  const first = i === 0 || m.sentences[i - 1].block !== s.block;
+                  return (
+                    <div key={s.id}>
+                      {first && block && block.type !== 'para' ? (
+                        <div className="pt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                          {block.type === 'heading' ? `标题 H${block.level ?? 1}` : block.type === 'li' ? '要点' : '引文'}
+                        </div>
+                      ) : null}
+                      <div
+                        className={`flex items-start gap-2 rounded-md border px-2 py-1 text-xs ${
+                          calibIndex === s.index ? 'border-primary bg-primary/5' : ''
+                        }`}
+                      >
+                        <button
+                          className="w-20 shrink-0 text-left tabular-nums text-muted-foreground hover:text-foreground"
+                          onClick={() => player.play(s.start, Math.min(s.end, effDur))}
+                          title="点击试听该句"
+                        >
+                          {fmtSec(s.start)}–{fmtSec(s.end)}
+                        </button>
+                        <span className="min-w-0 flex-1">{s.text}</span>
+                        <Badge
+                          variant={s.confidence > 0.7 ? 'secondary' : 'outline'}
+                          className={`shrink-0 text-[10px] ${s.confidence < 0.6 ? 'text-amber-600' : ''}`}
+                        >
+                          {Math.round(s.confidence * 100)}%
+                        </Badge>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 shrink-0"
+                          title="以当前播放位置校准该句起点"
+                          onClick={() => doCalibrate(s.index)}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
           </Section>

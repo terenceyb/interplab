@@ -1,22 +1,17 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Mic, Pause, Play, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageHeader, Section } from '@/components/PageHeader';
 import { EvsBar } from '@/components/ScriptView';
 import { LevelMeter } from '@/components/NotePad';
 import { Waveform } from '@/components/Waveform';
-import { RateSelect } from '@/components/RateSelect';
 import { VideoStage } from '@/components/VideoStage';
-
+import { RailCard, TrainShell } from '@/components/train/TrainShell';
 import { useApp } from '@/store/useApp';
 import { useAudioUrl, useHotkeys } from '@/lib/hooks';
 import { buildSession, useSimTraining } from '@/lib/useSimTraining';
-import { fmtSec } from '@/lib/metrics';
+import { fmtClock, fmtSec } from '@/lib/metrics';
 import type { Material, Session } from '@/types';
 
 export default function Shadowing() {
@@ -28,7 +23,15 @@ export default function Shadowing() {
   return <Runner material={material} saveSession={saveSession} nav={nav} />;
 }
 
-function Runner({ material, saveSession, nav }: { material: Material; saveSession: (s: Session) => Promise<void>; nav: (p: string) => void }) {
+function Runner({
+  material,
+  saveSession,
+  nav,
+}: {
+  material: Material;
+  saveSession: (s: Session) => Promise<void>;
+  nav: (p: string) => void;
+}) {
   const url = useAudioUrl(material.audioKey);
   const t = useSimTraining(material, url);
   const [lang, setLang] = useState<'source' | 'target'>('source');
@@ -73,125 +76,135 @@ function Runner({ material, saveSession, nav }: { material: Material; saveSessio
   };
 
   return (
-    <>
-      <PageHeader
-        title={`影子练习 · ${material.title}`}
-        desc={`${lang === 'source' ? '源语跟述' : '译语跟述'} · ${type === 'phoneme' ? '音位跟述（几乎同步）' : '片语跟述（滞后数秒）'}。空格开始/暂停，E 打点，1 偏短 / 2 偏长。`}
-        actions={
-          <>
-            <Badge variant="secondary">{fmtSec(effDur)}</Badge>
-            {t.state === 'idle' ? (
-              <Button size="sm" onClick={t.start}>
-                <Mic className="mr-1 h-3.5 w-3.5" /> 开始训练
-              </Button>
-            ) : t.state === 'training' ? (
-              <>
-                <Button size="sm" variant="outline" onClick={t.pause}>
-                  <Pause className="mr-1 h-3.5 w-3.5" /> 暂停
-                </Button>
-                <Button size="sm" variant="destructive" onClick={finish} disabled={saving}>
-                  <Square className="mr-1 h-3.5 w-3.5" /> 结束并复盘
-                </Button>
-              </>
-            ) : t.state === 'paused' ? (
-              <>
-                <Button size="sm" onClick={t.resume}>
-                  <Play className="mr-1 h-3.5 w-3.5" /> 继续
-                </Button>
-                <Button size="sm" variant="destructive" onClick={finish} disabled={saving}>
-                  <Square className="mr-1 h-3.5 w-3.5" /> 结束并复盘
-                </Button>
-              </>
-            ) : null}
-          </>
-        }
-      />
+    <TrainShell
+      mode="shadowing"
+      materialTitle={material.title}
+      stage={t.state === 'done' ? 'paused' : t.state}
+      time={t.player.time}
+      duration={effDur}
+      recorded={t.elapsed}
+      rate={t.player.rate}
+      onRate={t.player.setRate}
+      onStart={t.start}
+      onPause={t.pause}
+      onResume={t.resume}
+      onFinish={finish}
+      onExit={() => nav(`/material/${material.id}`)}
+      busy={saving}
+      hint="空格 开始/暂停 · E 打点 · 1 偏短 · 2 偏长"
+      extras={
+        <div className="hidden items-center gap-1 sm:flex">
+          <button
+            onClick={() => beat(0)}
+            disabled={t.state !== 'training'}
+            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+          >
+            打点 E
+          </button>
+          <button
+            onClick={() => beat(-1)}
+            disabled={t.state !== 'training'}
+            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+          >
+            偏短
+          </button>
+          <button
+            onClick={() => beat(1)}
+            disabled={t.state !== 'training'}
+            className="h-8 rounded-md border border-white/15 px-2 text-[11px] text-slate-200 hover:bg-white/10 disabled:opacity-40"
+          >
+            偏长
+          </button>
+        </div>
+      }
+      railTitle="跟述面板"
+      rail={
+        <>
+          <RailCard title="跟述参数">
+            <div className="space-y-2">
+              <div>
+                <Label className="text-[11px] text-slate-400">跟述语言</Label>
+                <Select value={lang} onValueChange={(v) => setLang(v as any)}>
+                  <SelectTrigger className="h-8 border-white/15 bg-white/5 text-xs text-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="source">源语跟述</SelectItem>
+                    <SelectItem value="target">译语跟述</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px] text-slate-400">跟述类型</Label>
+                <Select value={type} onValueChange={(v) => setType(v as any)}>
+                  <SelectTrigger className="h-8 border-white/15 bg-white/5 text-xs text-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="phoneme">音位跟述（几乎同步）</SelectItem>
+                    <SelectItem value="phrase">片语跟述（滞后数秒）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px] text-slate-400">目标 EVS（秒）</Label>
+                <Input
+                  className="h-8 border-white/15 bg-white/5 text-xs text-slate-100"
+                  type="number"
+                  step={0.5}
+                  value={evsTarget}
+                  onChange={(e) => setEvsTarget(Math.max(0, Number(e.target.value)))}
+                />
+              </div>
+            </div>
+          </RailCard>
 
-      <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <Section title="跟述中">
-          <div className="flex flex-col items-center gap-4 py-4">
-            <div className="text-5xl font-semibold tabular-nums tracking-tight">
-              {fmtSec(t.player.time)}
-              <span className="text-lg text-muted-foreground"> / {fmtSec(effDur)}</span>
+          <RailCard title="EVS 偏差">
+            <EvsBar dark sourceT={t.player.time} duration={effDur} target={evsTarget} />
+            <div className="mt-2 text-[11px] text-slate-500">
+              已打点 <span className="font-mono text-slate-300">{samples.length}</span> 次 · 复盘时查看偏差曲线
             </div>
-            <div className="w-full">
-              <EvsBar sourceT={t.player.time} duration={effDur} target={evsTarget} />
+          </RailCard>
+
+          <RailCard title="源语波形">
+            <Waveform
+              peaks={material.peaks}
+              duration={material.duration}
+              height={48}
+              color="#38bdf8"
+              cursor={t.player.time + material.trim.start}
+              highlight={{ start: material.trim.start, end: material.trim.end }}
+              markers={samples.map((s) => ({ t: s.t + material.trim.start, color: '#0ea5e9' }))}
+            />
+          </RailCard>
+        </>
+      }
+    >
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 rounded-xl border border-white/10 bg-white/[0.02]">
+          <div className="text-center">
+            <div className="font-mono text-6xl font-semibold tabular-nums tracking-tight">
+              {fmtClock(t.player.time)}
+              <span className="ml-2 text-lg text-slate-500">/ {fmtSec(effDur)}</span>
             </div>
-            {t.state === 'training' ? <LevelMeter wave={t.level.wave} level={t.level.rms} /> : null}
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => beat(0)} disabled={t.state !== 'training'}>
-                E 打点（跟上目标）
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => beat(-1)} disabled={t.state !== 'training'}>
-                1 偏短
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => beat(1)} disabled={t.state !== 'training'}>
-                2 偏长
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              已打点 {samples.length} 次 · 复盘时可查看 EVS 偏差曲线
+            <div className="mt-2 text-xs text-slate-500">
+              {lang === 'source' ? '源语跟述' : '译语跟述'} ·{' '}
+              {type === 'phoneme' ? '音位跟述' : '片语跟述'} · 译语已录 {t.elapsed.toFixed(1)}s
             </div>
           </div>
-        </Section>
-
-        <Section title="训练参数">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <div>
-              <Label className="text-xs">跟述语言</Label>
-              <Select value={lang} onValueChange={(v) => setLang(v as any)}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="source">源语跟述</SelectItem>
-                  <SelectItem value="target">译语跟述</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">跟述类型</Label>
-              <Select value={type} onValueChange={(v) => setType(v as any)}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="phoneme">音位跟述</SelectItem>
-                  <SelectItem value="phrase">片语跟述</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">目标 EVS（秒）</Label>
-              <Input
-                className="h-8"
-                type="number"
-                step={0.5}
-                value={evsTarget}
-                onChange={(e) => setEvsTarget(Math.max(0, Number(e.target.value)))}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">源语变速</Label>
-              <RateSelect value={t.player.rate} onChange={t.player.setRate} compact />
-            </div>
+          <div className="w-full max-w-xl px-6">
+            <EvsBar dark sourceT={t.player.time} duration={effDur} target={evsTarget} />
           </div>
-        </Section>
-
+          {t.state === 'training' ? (
+            <div className="w-full max-w-md px-6">
+              <LevelMeter wave={t.level.wave} level={t.level.rms} />
+            </div>
+          ) : null}
+        </div>
         {material.kind === 'video' ? (
-          <VideoStage el={t.player.el} className="aspect-video max-h-[44vh] w-full" />
+          <VideoStage el={t.player.el} className="max-h-[30vh] shrink-0 rounded-lg" />
         ) : null}
-        <Section title="源语波形">
-          <Waveform
-            peaks={material.peaks}
-            duration={material.duration}
-            height={56}
-            cursor={t.player.time + material.trim.start}
-            highlight={{ start: material.trim.start, end: material.trim.end }}
-            markers={samples.map((s) => ({ t: s.t + material.trim.start, color: '#0ea5e9' }))}
-          />
-        </Section>
       </div>
-    </>
+    </TrainShell>
   );
 }

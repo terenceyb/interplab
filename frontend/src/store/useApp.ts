@@ -30,16 +30,36 @@ interface AppState {
   wipe: () => Promise<void>;
 }
 
+/** objectURL 缓存：LRU 上限 10，超出立即 revoke，避免长会话内存持续上涨 */
+const URL_CACHE_MAX = 10;
 const urlCache = new Map<string, string>();
 
 export async function audioUrl(key: string): Promise<string> {
   const hit = urlCache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    urlCache.delete(key);
+    urlCache.set(key, hit);
+    return hit;
+  }
   const blob = await db.getAudio(key);
   if (!blob) return '';
   const url = URL.createObjectURL(blob);
   urlCache.set(key, url);
+  while (urlCache.size > URL_CACHE_MAX) {
+    const first = urlCache.entries().next();
+    if (first.done) break;
+    URL.revokeObjectURL(first.value[1]);
+    urlCache.delete(first.value[0]);
+  }
   return url;
+}
+
+export const urlCacheSize = () => urlCache.size;
+
+/** 释放全部音频 objectURL（内存紧张时手动触发） */
+export function clearUrlCache() {
+  for (const url of urlCache.values()) URL.revokeObjectURL(url);
+  urlCache.clear();
 }
 
 export const useApp = create<AppState>((set, get) => ({

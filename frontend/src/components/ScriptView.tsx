@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import type { Sentence } from '@/types';
+import type { DocBlock, Sentence } from '@/types';
 import { escapeRe, maskSentence } from '@/lib/text';
 import { cn } from '@/lib/utils';
 
@@ -15,15 +15,23 @@ interface Props {
   hide?: boolean;
   /**
    * 是否跟随播放高亮。
-   * false 时只做静态呈现（默认行为）：不高亮、不淡化、不自动滚动，
-   * 避免在「只呈现稿件」模式下被播放进度牵着走。
+   * false 时只做静态呈现（默认行为）：不高亮、不淡化、不自动滚动。
    */
   follow?: boolean;
+  /** 段落块结构：还原标题 / 段落 / 列表 / 引用，保留原文换行 */
+  blocks?: DocBlock[];
+  /** 深色（训练态）配色 */
+  dark?: boolean;
   onSentenceClick?: (i: number) => void;
   className?: string;
 }
 
-/** 带稿同传文本视图：随音频进度高亮 + 术语标记 + 遮挡训练 */
+interface Group {
+  block?: DocBlock;
+  items: { s: Sentence; gi: number }[];
+}
+
+/** 带稿同传文本视图：保留段落结构 + 术语标记 + 遮挡训练 + 可选跟随 */
 export function ScriptView({
   sentences,
   currentIdx,
@@ -35,6 +43,8 @@ export function ScriptView({
   lineHeight = 1.9,
   hide = false,
   follow = true,
+  blocks,
+  dark = false,
   onSentenceClick,
   className,
 }: Props) {
@@ -56,11 +66,31 @@ export function ScriptView({
     return new RegExp(`(${list.map(escapeRe).join('|')})`, 'gi');
   }, [terms]);
 
+  /** 按块分组，未提供 blocks 时整体视为一段 */
+  const groups = useMemo<Group[]>(() => {
+    const out: Group[] = [];
+    let lastBi = -1;
+    sentences.forEach((s, gi) => {
+      const bi = s.block ?? 0;
+      if (bi !== lastBi) {
+        out.push({ block: blocks?.[bi], items: [] });
+        lastBi = bi;
+      }
+      out[out.length - 1].items.push({ s, gi });
+    });
+    return out;
+  }, [sentences, blocks]);
+
   if (hide) {
     return (
-      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed text-muted-foreground">
-        <p className="text-sm">文本已隐藏 · 纯听模式</p>
-        <p className="mt-1 text-xs">用于自我检测是否过度依赖稿件</p>
+      <div
+        className={cn(
+          'flex h-full min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed',
+          dark ? 'border-white/15 bg-slate-900/60 text-slate-400' : 'text-muted-foreground',
+        )}
+      >
+        <p className="text-sm font-medium">稿件已隐藏 · 纯听状态</p>
+        <p className="mt-1 text-xs opacity-70">按 H 或右上角开关恢复 · 模拟无稿实战</p>
       </div>
     );
   }
@@ -68,7 +98,10 @@ export function ScriptView({
   const renderText = (text: string, masked: boolean) => {
     if (masked) {
       return (
-        <span className="rounded bg-muted px-1 text-muted-foreground" title="遮挡训练">
+        <span
+          className={cn('rounded px-1', dark ? 'bg-white/15 text-transparent' : 'bg-muted text-transparent')}
+          title="遮挡训练"
+        >
           {'█'.repeat(Math.min(12, Math.max(2, Math.round(text.replace(/\s/g, '').length / 2))))}
         </span>
       );
@@ -77,7 +110,15 @@ export function ScriptView({
     const parts = text.split(termRe);
     return parts.map((p, i) =>
       termRe.test(p) ? (
-        <span key={i} className="rounded-sm bg-amber-100 px-0.5 font-medium text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-2">
+        <span
+          key={i}
+          className={cn(
+            'rounded-sm px-0.5 font-medium',
+            dark
+              ? 'bg-amber-300/20 text-amber-200 decoration-amber-400/70 underline decoration-2 underline-offset-2'
+              : 'bg-amber-100 text-amber-900 decoration-amber-400 underline decoration-2 underline-offset-2',
+          )}
+        >
           {p}
         </span>
       ) : (
@@ -86,35 +127,85 @@ export function ScriptView({
     );
   };
 
+  const renderSentence = ({ s, gi }: { s: Sentence; gi: number }) => {
+    const state = !follow ? 'idle' : gi < currentIdx ? 'read' : gi === currentIdx ? 'current' : 'future';
+    const pieces =
+      maskMode === 'none' ? [{ text: s.text, masked: false }] : maskSentence(s.text, maskMode, maskRatio);
+    return (
+      <span
+        key={s.id}
+        ref={state === 'current' ? activeRef : undefined}
+        onClick={() => onSentenceClick?.(gi)}
+        className={cn(
+          'cursor-pointer rounded px-0.5 transition-colors',
+          state === 'current' && (dark ? 'bg-amber-300/15 text-white' : 'bg-primary/20 font-medium'),
+          state === 'read' && (dark ? 'text-slate-500' : 'text-muted-foreground/60'),
+        )}
+      >
+        {pieces.map((p, j) => (
+          <span key={j}>{renderText(p.text, p.masked)}</span>
+        ))}
+        <span> </span>
+      </span>
+    );
+  };
+
   return (
     <div
       ref={boxRef}
-      className={cn('max-h-[52vh] overflow-y-auto rounded-md border bg-card p-4', className)}
+      className={cn(
+        'h-full overflow-y-auto rounded-lg border px-5 py-4',
+        dark ? 'border-white/10 bg-slate-900/55 text-slate-100' : 'bg-card',
+        className,
+      )}
       style={{ fontSize, lineHeight }}
     >
-      {sentences.map((s, i) => {
-        const state = !follow ? 'idle' : i < currentIdx ? 'read' : i === currentIdx ? 'current' : 'future';
-        const pieces = maskMode === 'none' ? [{ text: s.text, masked: false }] : maskSentence(s.text, maskMode, maskRatio);
-        return (
-          <span key={s.id}>
-            <span
-              ref={state === 'current' ? activeRef : undefined}
-              onClick={() => onSentenceClick?.(i)}
+      {groups.map((g, gidx) => {
+        const type = g.block?.type ?? 'para';
+        const body = g.items.map(renderSentence);
+        if (type === 'heading' || type === 'title') {
+          const lv = g.block?.level ?? 1;
+          return (
+            <h3
+              key={gidx}
               className={cn(
-                'cursor-pointer rounded px-1 transition-colors',
-                state === 'current' && 'bg-primary/20 font-medium',
-                state === 'read' && 'text-muted-foreground/60',
-                state === 'future' && '',
+                'mb-2 mt-4 border-b pb-1 font-semibold first:mt-0',
+                dark ? 'border-white/10 text-white' : 'border-border',
+                lv <= 1 ? 'text-[1.15em]' : 'text-[1.05em]',
               )}
             >
-              {pieces.map((p, j) => (
-                <span key={j}>{renderText(p.text, p.masked)}</span>
-              ))}
-            </span>
-            <span> </span>
-          </span>
+              {body}
+            </h3>
+          );
+        }
+        if (type === 'li') {
+          return (
+            <div key={gidx} className="mb-1.5 flex gap-2">
+              <span className={cn('mt-[0.75em] h-1.5 w-1.5 shrink-0 rounded-full', dark ? 'bg-sky-400' : 'bg-primary')} />
+              <span className="min-w-0 flex-1">{body}</span>
+            </div>
+          );
+        }
+        if (type === 'quote') {
+          return (
+            <blockquote
+              key={gidx}
+              className={cn(
+                'mb-2 border-l-2 pl-3',
+                dark ? 'border-amber-400/60 text-slate-300' : 'border-amber-400 text-muted-foreground',
+              )}
+            >
+              {body}
+            </blockquote>
+          );
+        }
+        return (
+          <p key={gidx} className="mb-2.5">
+            {body}
+          </p>
         );
       })}
+      {!sentences.length ? <p className="text-sm opacity-60">（稿件为空）</p> : null}
     </div>
   );
 }
@@ -124,27 +215,29 @@ export function EvsBar({
   sourceT,
   duration,
   target,
+  dark = false,
 }: {
   sourceT: number;
   duration: number;
   target: number;
+  dark?: boolean;
 }) {
   const pct = duration > 0 ? (sourceT / duration) * 100 : 0;
   const lagT = Math.max(0, sourceT - target);
   const lagPct = duration > 0 ? (lagT / duration) * 100 : 0;
   return (
     <div className="space-y-1">
-      <div className="relative h-2 w-full rounded-full bg-muted">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-primary/60" style={{ width: `${pct}%` }} />
+      <div className={cn('relative h-2 w-full rounded-full', dark ? 'bg-white/10' : 'bg-muted')}>
+        <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/70" style={{ width: `${pct}%` }} />
         <div
-          className="absolute -top-1 h-4 w-1 rounded bg-amber-500"
+          className="absolute -top-1 h-4 w-1 rounded bg-amber-400"
           style={{ left: `${lagPct}%` }}
           title={`目标滞后 ${target}s：此刻应正在译该位置`}
         />
       </div>
-      <div className="flex justify-between text-[11px] text-muted-foreground">
+      <div className={cn('flex justify-between text-[11px]', dark ? 'text-slate-400' : 'text-muted-foreground')}>
         <span>源语进度 {sourceT.toFixed(1)}s</span>
-        <span className="text-amber-600">目标 EVS {target}s · 应译至 {lagT.toFixed(1)}s</span>
+        <span className="text-amber-500">目标 EVS {target}s · 应译至 {lagT.toFixed(1)}s</span>
       </div>
     </div>
   );

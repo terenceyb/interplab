@@ -220,6 +220,13 @@ export async function wipeAll() {
   await tx.done;
 }
 
+/** 音频/图片对象存储的键与体积，用于孤儿清理与用量展示 */
+export async function listAudioMeta(): Promise<{ key: string; size: number }[]> {
+  const d = await db();
+  const all = (await d.getAll('audio')) as { key: string; size?: number }[];
+  return all.map((r) => ({ key: r.key, size: r.size || 0 }));
+}
+
 export async function estimateUsage(): Promise<{ bytes: number; count: number }> {
   const d = await db();
   const all = await d.getAll('audio');
