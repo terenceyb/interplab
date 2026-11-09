@@ -9,13 +9,15 @@ import { cn } from '@/lib/utils';
  * 颜色只在真正需要关注时变红，避免长期干扰；
  * 一键清理会释放 objectURL、图片缓存、VAD 缓存并清掉孤儿音频。
  */
-export function ResourceMonitor() {
+export function ResourceMonitor({ forceCompact }: { forceCompact?: boolean } = {}) {
   const { snap, busy, setBusy } = useResources(2500);
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<CleanupResult | null>(null);
   const loc = useLocation();
   // 训练页底部是主控制区，监视器收成小球贴右下角
-  const compact = loc.pathname.startsWith('/train');
+  const compact = forceCompact ?? loc.pathname.startsWith('/train');
+  /** 训练页是深色界面，监视器也跟着换配色，避免一块白斑 */
+  const dark = !!forceCompact;
 
   const heapPct = snap.heapPct ?? 0;
   const storagePct = snap.storageQuota ? snap.storageUsed / snap.storageQuota : 0;
@@ -38,7 +40,10 @@ export function ResourceMonitor() {
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          'fixed z-40 flex items-center gap-1.5 rounded-full border bg-background/95 px-2.5 py-1.5 text-[11px] shadow-sm backdrop-blur transition-colors hover:bg-accent',
+          'fixed z-40 flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] shadow-sm backdrop-blur transition-colors',
+          dark
+            ? 'border-white/10 bg-slate-900/90 text-slate-300 hover:bg-slate-800'
+            : 'bg-background/95 hover:bg-accent',
           compact ? 'bottom-20 right-3' : 'bottom-4 left-4',
         )}
         title="资源占用（点击查看详情）"
@@ -63,7 +68,8 @@ export function ResourceMonitor() {
   return (
     <div
       className={cn(
-        'fixed z-40 w-[280px] rounded-lg border bg-background/97 p-3 text-xs shadow-lg backdrop-blur',
+        'fixed z-40 w-[280px] rounded-lg border p-3 text-xs shadow-lg backdrop-blur',
+        dark ? 'border-white/10 bg-slate-900/97 text-slate-200' : 'bg-background/97',
         compact ? 'bottom-20 right-3' : 'bottom-4 left-4',
       )}
     >

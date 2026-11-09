@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { fmtClock, fmtSec } from '@/lib/metrics';
 import { MODE_LABEL, type TrainMode } from '@/types';
 import { RateSelect } from '@/components/RateSelect';
+import { ResourceMonitor } from '@/components/ResourceMonitor';
 
 export type TrainStage = 'idle' | 'training' | 'paused' | 'done';
 
@@ -226,6 +227,7 @@ export function TrainShell({
           {hint ? <span className="hidden max-w-[46ch] truncate text-[11px] text-slate-500 lg:block">{hint}</span> : null}
         </div>
       </footer>
+      <ResourceMonitor forceCompact />
     </div>
   );
 }
