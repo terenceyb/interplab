@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Presentation, Trash2, Upload } from 'lucide-react';
 import { SCRIPT_ACCEPT, SLIDE_ACCEPT, parseScriptFile, type ParsedDoc } from '@/lib/document';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,13 @@ export function DocSlots({
   const [busy, setBusy] = useState<Busy>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // 提示 8 秒后自动消失，避免换文件后旧提示误导
+  useEffect(() => {
+    if (!msg) return;
+    const id = setTimeout(() => setMsg(null), 8000);
+    return () => clearTimeout(id);
+  }, [msg]);
+
   const run = async (kind: Exclude<Busy, null>, file: File) => {
     setBusy(kind);
     setMsg(null);
@@ -62,13 +69,17 @@ export function DocSlots({
         await onSlides(doc, file.name);
         setMsg({
           ok: true,
-          text: `已载入 ${doc.slides.length} 页（${doc.source}${doc.encoding ? ` · ${doc.encoding}` : ''}）${warn}`,
+          text: `已载入 ${doc.slides.length} 页幻灯片（${doc.source}${doc.encoding ? ` · ${doc.encoding}` : ''}）${
+            only === 'script' ? '，已归入「PPT / PDF 幻灯片」' : ''
+          }${warn}`,
         });
       } else {
         await onScript(doc, file.name);
         setMsg({
           ok: true,
-          text: `已读取 ${doc.blocks?.length ?? 0} 段文字（${doc.source}${doc.encoding ? ` · ${doc.encoding}` : ''}）${warn}`,
+          text: `已读取 ${doc.blocks?.length ?? 0} 段文字（${doc.source}${doc.encoding ? ` · ${doc.encoding}` : ''}）${
+            only === 'slides' ? '，已归入「讲话稿 / 字幕」' : ''
+          }${warn}`,
         });
       }
     } catch (e: any) {
